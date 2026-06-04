@@ -1,0 +1,29 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dados curados À MÃO — sobreposição (overlay) ao definitions/data.ttl gerado.
+#
+# Por quê um arquivo separado: o data.ttl é REGERADO por scripts/pull_*.py e
+# qualquer edição manual nele se perde. Aqui ficam os fatos que a API do
+# Instagram NÃO entrega (colaboradoras do recurso "Collab", local de encontro)
+# e que precisam sobreviver às regerações.
+#
+# Carregue ESTE arquivo JUNTO com o data.ttl (mesmo grafo) na validação/app.
+# As triplas abaixo apenas ACRESCENTAM propriedades aos mesmos IRIs já gerados.
+# ─────────────────────────────────────────────────────────────────────────────
+@prefix ph: <https://pedalhidrografi.co/terms#> .
+@prefix schema: <https://schema.org/> .
+
+# Post 94 (Teatros) — colaboradoras do Collab (não expostas pela Graph API).
+# https://www.instagram.com/p/DY7f96pDuCJ/
+ph:ig-DY7f96pDuCJ
+    ph:collaborator <https://www.instagram.com/oficinauzynauzona/> ,
+                    <https://www.instagram.com/teatropopularuniaoeolhovivo/> .
+
+# Post 93½ (Caaguaçu) — local de encontro (não exposto pela Graph API).
+# https://www.instagram.com/p/DY0V9KkDt_2/
+ph:ig-DY0V9KkDt_2
+    ph:gatheringLocation [
+        a schema:Place ;
+        schema:name "Praça dos Arcos" ;
+        schema:url <https://www.instagram.com/explore/locations/2094742/praca-dos-arcos/> ;
+        # «TODO: lat/long se quiser — a API não fornece; preencher à mão».
+    ] .

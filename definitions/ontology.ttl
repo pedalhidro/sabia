@@ -1,0 +1,105 @@
+@prefix ph: <https://pedalhidrografi.co/terms#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix schema: <https://schema.org/> .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Classes
+#
+# Modelo:
+#   ph:Tour  ──ph:hasAnnouncement (1+)──▶  ph:TourAnnouncement
+#                                              ▲
+#                  rdfs:subClassOf  ───────────┤
+#   ph:InstagramPost / ph:WhatsappMessage / ph:RedditPost / ph:SMS / ph:Mastodon
+#
+# Cada canal de divulgação é uma subclasse de ph:TourAnnouncement (NÃO de
+# ph:Tour). Como o SHACL aplica sh:targetClass também às subclasses (entailment
+# de rdfs:subClassOf), a ph:TourAnnouncementShape valida automaticamente todo
+# anúncio, qualquer que seja o canal.
+#
+# Pré-requisito: este arquivo precisa estar no MESMO grafo de shapes usado na
+# validação, pra que o seletor de alvo enxergue a hierarquia de classes.
+# ─────────────────────────────────────────────────────────────────────────────
+ph:Tour a rdfs:Class ;
+    rdfs:label "Passeio"@pt ;
+    rdfs:comment "Um passeio/evento ciclístico do Pedal Hidrográfico."@pt .
+
+ph:TourAnnouncement a rdfs:Class ;
+    rdfs:label "Anúncio de passeio"@pt ;
+    rdfs:comment "A divulgação de um passeio num canal (Instagram, WhatsApp, Reddit, SMS, Mastodon…). Aponta de volta pro passeio via ph:announces."@pt .
+
+ph:Image a rdfs:Class ;
+    rdfs:label "Foto"@pt ;
+    rdfs:comment "Uma fotografia registrada num passeio (com timestamp e GPS — ph:ImageShape)."@pt .
+
+# Imagem de ANÚNCIO — a foto que vai num post/mensagem. NÃO é uma ph:Image:
+# vem do Instagram/etc., que remove o EXIF, então não tem (nem precisa de)
+# coordenada ou timestamp original. Por isso é uma classe à parte, livre das
+# exigências de GPS da ph:ImageShape.
+ph:AnnouncementImage a rdfs:Class ;
+    rdfs:label "Imagem de anúncio"@pt ;
+    rdfs:comment "Imagem usada num anúncio (post/mensagem). Sem exigência de coordenadas."@pt .
+
+# Canais de divulgação — cada um é um tipo de anúncio (rdfs:subClassOf
+# ph:TourAnnouncement), então herdam a exigência de apontar pro passeio
+# (ph:announces) e só acrescentam o que é específico do canal.
+ph:InstagramPost a rdfs:Class ;
+    rdfs:subClassOf ph:TourAnnouncement ;
+    rdfs:label "Post de Instagram"@pt ;
+    rdfs:comment "Anúncio de passeio publicado como post no Instagram — acrescenta narrativa, marcações, colaboradoras, local de encontro e fotos."@pt .
+
+ph:WhatsappMessage a rdfs:Class ;
+    rdfs:subClassOf ph:TourAnnouncement ;
+    rdfs:label "Mensagem de WhatsApp"@pt ;
+    rdfs:comment "Anúncio de passeio divulgado como mensagem de WhatsApp."@pt .
+
+ph:RedditPost a rdfs:Class ;
+    rdfs:subClassOf ph:TourAnnouncement ;
+    rdfs:label "Post de Reddit"@pt ;
+    rdfs:comment "Anúncio de passeio publicado como post no Reddit."@pt .
+
+ph:SMS a rdfs:Class ;
+    rdfs:subClassOf ph:TourAnnouncement ;
+    rdfs:label "SMS"@pt ;
+    rdfs:comment "Anúncio de passeio divulgado por SMS."@pt .
+
+ph:Mastodon a rdfs:Class ;
+    rdfs:subClassOf ph:TourAnnouncement ;
+    rdfs:label "Toot de Mastodon"@pt ;
+    rdfs:comment "Anúncio de passeio publicado como toot no Mastodon."@pt .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Propriedades de ligação passeio ⇄ anúncio
+# ─────────────────────────────────────────────────────────────────────────────
+ph:hasAnnouncement a rdf:Property ;
+    rdfs:label "tem anúncio"@pt ;
+    rdfs:comment "Liga um passeio aos seus anúncios. Um passeio precisa de ao menos um."@pt ;
+    rdfs:domain ph:Tour ;
+    rdfs:range ph:TourAnnouncement .
+
+ph:announces a rdf:Property ;
+    rdfs:label "anuncia"@pt ;
+    rdfs:comment "Liga um anúncio de volta ao passeio que ele divulga."@pt ;
+    rdfs:domain ph:TourAnnouncement ;
+    rdfs:range ph:Tour .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Propriedades introduzidas pelo ph:InstagramPost
+# ─────────────────────────────────────────────────────────────────────────────
+ph:tagAccount a rdf:Property ;
+    rdfs:label "conta marcada"@pt ;
+    rdfs:comment "Conta do Instagram marcada no post."@pt ;
+    rdfs:domain ph:InstagramPost ;
+    rdfs:range schema:Person .
+
+ph:collaborator a rdf:Property ;
+    rdfs:label "colaboradora"@pt ;
+    rdfs:comment "Conta convidada a colaborar no post (recurso de Colaboração do Instagram)."@pt ;
+    rdfs:domain ph:InstagramPost ;
+    rdfs:range schema:Person .
+
+ph:gatheringLocation a rdf:Property ;
+    rdfs:label "local de encontro"@pt ;
+    rdfs:comment "Ponto de concentração/encontro do passeio."@pt ;
+    rdfs:domain ph:InstagramPost ;
+    rdfs:range schema:Place .

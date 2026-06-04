@@ -1,0 +1,233 @@
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix exif: <http://www.w3.org/2003/12/exif/ns#> .
+@prefix geo: <http://www.opengis.net/ont/geosparql#> .
+@prefix nfo: <http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#> .
+@prefix pav: <http://purl.org/pav/> .
+@prefix ph: <https://pedalhidrografi.co/terms#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix schema: <https://schema.org/> .
+@prefix sf: <http://www.opengis.net/ont/sf#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Passeio ⇄ anúncios
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Todo passeio precisa de ao menos um anúncio (ph:hasAnnouncement). Shape
+# separada que mira ph:Tour — convive com a ph:TourShape (vários NodeShapes
+# podem mirar a mesma classe).
+ph:TourAnnouncementLinkShape a sh:NodeShape ;
+    sh:targetClass ph:Tour ;
+    sh:property [
+        sh:path ph:hasAnnouncement ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:class ph:TourAnnouncement ;
+        sh:message "Passeio precisa de ao menos um anúncio (ph:hasAnnouncement → ph:TourAnnouncement)."@pt ;
+    ] .
+
+# Base de todos os anúncios. O vínculo com o passeio (ph:announces) é OPCIONAL
+# por enquanto: a ausência gera só um Aviso, não uma Violação. Mas SE declarado,
+# precisa ser exatamente um ph:Tour (isso continua Violação).
+ph:TourAnnouncementShape a sh:NodeShape ;
+    sh:targetClass ph:TourAnnouncement ;
+    sh:property [
+        sh:path ph:announces ;
+        sh:severity sh:Warning ;
+        sh:minCount 1 ;
+        sh:message "Ideal: associar o anúncio a um passeio (ph:announces → ph:Tour)."@pt ;
+    ] ;
+    sh:property [
+        sh:path ph:announces ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:class ph:Tour ;
+        sh:message "Se declarado, ph:announces deve apontar pra um único ph:Tour."@pt ;
+    ] .
+
+# Imagem de anúncio — leve, SEM exigência de coordenada/timestamp (o Instagram
+# etc. removem o EXIF). Só precisa apontar pro arquivo/URL da imagem.
+ph:AnnouncementImageShape a sh:NodeShape ;
+    sh:targetClass ph:AnnouncementImage ;
+    sh:property [
+        sh:path schema:contentUrl ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:message "Imagem de anúncio precisa de uma URL/arquivo (schema:contentUrl)."@pt ;
+    ] .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# InstagramPostShape — restrições EXTRAS de um anúncio no Instagram.
+#
+# É um ph:TourAnnouncement (ver definitions/ontology.ttl), então a
+# ph:TourAnnouncementShape já exige o vínculo com o passeio (ph:announces).
+# Diferente do modelo antigo, o anúncio NÃO herda mais título/data de ph:Tour —
+# isso é responsabilidade do passeio em si. Aqui só os extras do canal.
+# ─────────────────────────────────────────────────────────────────────────────
+ph:InstagramPostShape a sh:NodeShape ;
+    sh:targetClass ph:InstagramPost ;
+
+    # (a) Corpo / narrativa — obrigatório, até 1200 caracteres.
+    sh:property [
+        sh:path schema:articleBody ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 2150 ;
+        sh:message "Post precisa de corpo/narrativa (schema:articleBody), de 1 a 2150 caracteres."@pt ;
+    ] ;
+
+    # (b) Contas a marcar — até o limite de marcações do Instagram (20).
+    sh:property [
+        sh:path ph:tagAccount ;
+        sh:severity sh:Violation ;
+        sh:maxCount 20 ;
+        sh:nodeKind sh:IRI ;
+        sh:message "No máximo 20 contas marcadas (ph:tagAccount)."@pt ;
+    ] ;
+
+    # (c) Contas convidadas como colaboradoras — até 5, sem sobrepor às marcadas.
+    sh:property [
+        sh:path ph:collaborator ;
+        sh:severity sh:Violation ;
+        sh:maxCount 5 ;
+        sh:nodeKind sh:IRI ;
+        sh:disjoint ph:tagAccount ;
+        sh:message "No máximo 5 colaboradoras (ph:collaborator), sem sobrepor às contas marcadas (ph:tagAccount)."@pt ;
+    ] ;
+
+    # (d) Local de encontro / concentração.
+    sh:property [
+        sh:path ph:gatheringLocation ;
+        sh:severity sh:Violation ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:class schema:Place ;
+        sh:message "Post pode ter um único local de encontro (ph:gatheringLocation → schema:Place)."@pt ;
+    ] ;
+
+    # (e) De 1 a 10 fotos, EM ORDEM. A ordem importa, então as fotos são uma
+    # lista RDF (Turtle: schema:image ( ph:img1 ph:img2 ... )), não múltiplos
+    # valores soltos (que formam um conjunto sem ordem).
+    #
+    # schema:image precisa ser um único nó (a cabeça da lista):
+    sh:property [
+        sh:path schema:image ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:message "As fotos devem vir como UMA lista ordenada em schema:image — ex.: schema:image ( ph:img1 ph:img2 )."@pt ;
+    ] ;
+    # Cada membro da lista (schema:image → rdf:rest* → rdf:first) é uma imagem
+    # de anúncio (sem GPS); a contagem de membros vai de 1 a 10:
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 10 ;
+        sh:class ph:AnnouncementImage ;
+        sh:node ph:AnnouncementImageShape ;
+        sh:message "Post precisa de 1 a 10 imagens na lista, cada uma conformando a ph:AnnouncementImageShape."@pt ;
+    ] .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Demais canais — todos rdfs:subClassOf ph:TourAnnouncement (ver
+# definitions/ontology.ttl), então a ph:TourAnnouncementShape já exige o
+# vínculo com o passeio (ph:announces); aqui só os extras do canal.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# WhatsApp: mensagem (obrigatória, ≤2150) + foto principal (opcional).
+ph:WhatsappMessageShape a sh:NodeShape ;
+    sh:targetClass ph:WhatsappMessage ;
+    sh:property [
+        sh:path schema:text ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 2150 ;
+        sh:message "Mensagem de WhatsApp precisa de texto (schema:text), de 1 a 2150 caracteres."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:image ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:class ph:AnnouncementImage ;
+        sh:node ph:AnnouncementImageShape ;
+        sh:message "WhatsApp aceita no máximo uma imagem principal (schema:image → ph:AnnouncementImageShape)."@pt ;
+    ] .
+
+# Reddit: título (obrigatório, ≤300 — limite do Reddit) + corpo (opcional,
+# ≤40000) + fotos (opcionais; ordem não declarada como relevante → conjunto).
+ph:RedditPostShape a sh:NodeShape ;
+    sh:targetClass ph:RedditPost ;
+    sh:property [
+        sh:path dcterms:title ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 300 ;
+        sh:message "Título do Reddit é obrigatório e tem no máximo 300 caracteres (dcterms:title)."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:articleBody ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 40000 ;
+        sh:message "Se houver, o corpo do post (schema:articleBody) tem no máximo 40000 caracteres."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:image ;
+        sh:severity sh:Violation ;
+        sh:class ph:AnnouncementImage ;
+        sh:node ph:AnnouncementImageShape ;
+        sh:message "Cada imagem do Reddit deve conformar a ph:AnnouncementImageShape."@pt ;
+    ] .
+
+# SMS: só a mensagem (obrigatória, ≤160 — um segmento SMS em GSM-7).
+ph:SMSShape a sh:NodeShape ;
+    sh:targetClass ph:SMS ;
+    sh:property [
+        sh:path schema:text ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 160 ;
+        sh:message "SMS precisa de uma mensagem (schema:text), de 1 a 160 caracteres."@pt ;
+    ] .
+
+# Mastodon: corpo (obrigatório, ≤500 — limite padrão do toot) + fotos
+# (opcionais, ≤4, EM ORDEM → lista RDF, igual ao Instagram).
+ph:MastodonShape a sh:NodeShape ;
+    sh:targetClass ph:Mastodon ;
+    sh:property [
+        sh:path schema:articleBody ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 500 ;
+        sh:message "Toot precisa de corpo (schema:articleBody), de 1 a 500 caracteres."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:image ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:message "As fotos devem vir como UMA lista ordenada em schema:image — ex.: schema:image ( ph:img1 ph:img2 )."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:maxCount 4 ;
+        sh:class ph:AnnouncementImage ;
+        sh:node ph:AnnouncementImageShape ;
+        sh:message "Toot aceita no máximo 4 imagens, em ordem, cada uma conformando a ph:AnnouncementImageShape."@pt ;
+    ] .
