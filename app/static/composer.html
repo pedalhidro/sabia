@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pedal Hidrográfico — Novo post</title>
+<style>
+  :root { --line:#dbdbdb; --muted:#8e8e8e; --ig:#0095f6; --bg:#fafafa; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         background:var(--bg); color:#262626; }
+  .wrap { display:grid; grid-template-columns: 1fr 460px; gap:32px; max-width:1100px; margin:24px auto; padding:0 16px; }
+  @media (max-width:880px){ .wrap{ grid-template-columns:1fr; } }
+  h1 { font-size:20px; margin:0 0 10px; }
+  .intro { font-size:13px; color:#444; background:#f0f6ff; border:1px solid #d6e4ff; border-radius:8px;
+           padding:10px 12px; margin:0 0 18px; line-height:1.5; }
+  .intro ol { margin:6px 0 0; padding-left:18px; }
+  .intro li { margin:2px 0; }
+  label { display:block; font-weight:600; font-size:13px; margin:14px 0 6px; }
+  textarea, input[type=text] { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px;
+         font:inherit; background:#fff; }
+  textarea { min-height:120px; resize:vertical; }
+  .row { display:flex; gap:10px; }
+  .row > * { flex:1; }
+  .hint { color:var(--muted); font-size:12px; margin-top:4px; }
+  .count { float:right; font-weight:400; color:var(--muted); }
+  .count.over { color:#ed4956; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .chip { background:#efefef; border-radius:14px; padding:3px 10px; font-size:13px; }
+  .toggle { display:flex; align-items:center; gap:10px; margin-top:16px; }
+  .switch { position:relative; width:44px; height:24px; }
+  .switch input { display:none; }
+  .slider { position:absolute; inset:0; background:#ccc; border-radius:24px; transition:.2s; }
+  .slider:before { content:""; position:absolute; width:18px; height:18px; left:3px; top:3px; background:#fff;
+         border-radius:50%; transition:.2s; }
+  input:checked + .slider { background:var(--ig); }
+  input:checked + .slider:before { transform:translateX(20px); }
+  button.publish { margin-top:20px; width:100%; background:var(--ig); color:#fff; border:0; border-radius:8px;
+         padding:12px; font-weight:600; font-size:15px; cursor:pointer; }
+  button.publish:disabled { opacity:.5; cursor:not-allowed; }
+  .confirm { display:none; margin-top:12px; padding:12px 14px; border:1px solid #f5a; border-radius:8px; background:#fff5f7; }
+  .confirm.show { display:block; }
+  .confirm .cbtns { display:flex; gap:10px; margin-top:10px; }
+  .confirm .cbtns button { flex:1; padding:10px; border:0; border-radius:8px; font-weight:600; cursor:pointer; }
+  .btn-confirm { background:#ed4956; color:#fff; }
+  .btn-cancel { background:#efefef; }
+  .result { margin-top:14px; padding:12px; border-radius:8px; font-size:13px; white-space:pre-wrap; }
+  .result.ok { background:#e7f6ec; } .result.err { background:#fdecea; }
+
+  /* ── posts grid ── */
+  .grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin:8px 0 6px; }
+  .gcell { position:relative; aspect-ratio:1/1; border-radius:6px; overflow:hidden; background:#efefef;
+           border:1px solid var(--line); }
+  .gcell a { display:block; width:100%; height:100%; }
+  .gcell img { width:100%; height:100%; object-fit:cover; display:block; }
+  .gcell .meta { position:absolute; left:0; right:0; bottom:0; padding:2px 5px; font-size:10px; color:#fff;
+                 background:linear-gradient(transparent, rgba(0,0,0,.7)); display:flex; gap:6px; }
+  .gcell .del { position:absolute; top:3px; right:3px; width:20px; height:20px; border:0; border-radius:50%;
+                background:rgba(0,0,0,.6); color:#fff; font-size:12px; line-height:1; cursor:pointer; }
+  .gcell .del:disabled { opacity:.4; cursor:not-allowed; }
+  .grid-empty { color:var(--muted); font-size:12px; margin:6px 0; }
+  .grid-msg { font-size:13px; margin:4px 0 8px; padding:8px 10px; border-radius:8px; display:none; }
+  .grid-msg.show { display:block; }
+  .grid-msg.ok { background:#e7f6ec; } .grid-msg.err { background:#fdecea; }
+  .gcell.removing { opacity:.4; pointer-events:none; }
+
+  /* ── IG post card ── */
+  .sticky { position:sticky; top:24px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; max-width:460px; }
+  .chead { display:flex; align-items:center; gap:10px; padding:12px 14px; }
+  .avatar { width:34px; height:34px; border-radius:50%;
+            background:linear-gradient(45deg,#feda75,#d62976,#962fbf); flex:none; }
+  .uname { font-weight:600; font-size:14px; line-height:1.2; }
+  .uloc { font-size:12px; color:#262626; }
+  .frame { position:relative; width:100%; aspect-ratio:1/1; background:#efefef; }
+  .frame img { width:100%; height:100%; object-fit:cover; display:block; }
+  .frame .empty { display:flex; align-items:center; justify-content:center; height:100%; color:var(--muted); font-size:14px; }
+  .nav { position:absolute; top:50%; transform:translateY(-50%); background:rgba(255,255,255,.85);
+         border:0; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:14px; }
+  .nav.prev{ left:8px; } .nav.next{ right:8px; }
+  .counter { position:absolute; top:10px; right:10px; background:rgba(0,0,0,.6); color:#fff;
+         font-size:12px; padding:2px 8px; border-radius:10px; }
+  .tagbadge { position:absolute; left:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
+         font-size:12px; padding:3px 8px; border-radius:6px; max-width:80%; }
+  .dots { display:flex; gap:4px; justify-content:center; padding:8px 0 2px; }
+  .dot { width:6px; height:6px; border-radius:50%; background:#c7c7c7; }
+  .dot.on { background:var(--ig); }
+  .actions { display:flex; gap:14px; padding:8px 14px 4px; font-size:20px; }
+  .actions .spacer{ flex:1; }
+  .cap { padding:4px 14px 14px; font-size:14px; line-height:1.4; }
+  .cap .u { font-weight:600; }
+  .cap a { color:#00376b; text-decoration:none; }
+  .draftpill { display:inline-block; font-size:11px; font-weight:600; color:#c2410c; background:#ffedd5;
+         border-radius:10px; padding:1px 8px; margin-left:6px; vertical-align:middle; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- ── FORM ── -->
+  <div>
+    <h1>Novo post do @<span id="acct">pedalhidrografico</span></h1>
+
+    <div class="intro">
+      Componha um post à direita e veja o preview ao vivo.
+      <ol>
+        <li>Escolha as imagens (a ordem é a do carrossel) e escreva a legenda.</li>
+        <li>Se quiser, marque contas, convide colaboradoras e defina o local.</li>
+        <li><b>Publicar</b> posta no Instagram (pede confirmação); desligue p/ salvar rascunho.</li>
+      </ol>
+      A grade abaixo lista os posts que esta app publicou — clique p/ abrir; o ✕ remove (só com baixo engajamento).
+    </div>
+
+    <label>Posts publicados por esta app</label>
+    <div class="grid-msg" id="gridMsg"></div>
+    <div class="grid" id="postsGrid"></div>
+    <div class="grid-empty" id="gridEmpty" style="display:none">Nenhum post ainda.</div>
+
+    <label>Imagens (1–10, na ordem)</label>
+    <input type="file" id="images" accept="image/*" multiple />
+    <div class="hint" id="imgHint">A ordem dos arquivos é a ordem do carrossel.</div>
+
+    <label>Legenda <span class="count" id="capCount">0 / 2150</span></label>
+    <textarea id="caption" placeholder="Escreva a legenda…  Use @perfil e #hashtag"></textarea>
+
+    <div class="row">
+      <div>
+        <label>Colaboradoras (@)</label>
+        <input type="text" id="collaborators" placeholder="@conta1, @conta2" />
+        <div class="chips" id="collabChips"></div>
+      </div>
+      <div>
+        <label>Marcar contas (@)</label>
+        <input type="text" id="tagged" placeholder="@conta3, @conta4" />
+        <div class="chips" id="tagChips"></div>
+      </div>
+    </div>
+
+    <label>Local de encontro</label>
+    <input type="text" id="location_name" placeholder="Nome (ex.: Praça dos Arcos)" />
+    <div class="row" style="margin-top:8px">
+      <input type="text" id="location_id" placeholder="IG location id (ex.: 2094742)" />
+      <input type="text" id="location_url" placeholder="URL da localização (opcional)" />
+    </div>
+
+    <div class="toggle">
+      <label class="switch" style="margin:0">
+        <input type="checkbox" id="is_posted" checked /><span class="slider"></span>
+      </label>
+      <span id="postedLabel">Publicar no Instagram</span>
+    </div>
+    <div class="hint">Desligado = salvar como rascunho (ph:isPosted false), sem postar.</div>
+
+    <button class="publish" id="go">Publicar</button>
+    <div class="confirm" id="confirmBar">
+      ⚠️ Isso vai publicar <b>AO VIVO</b> em @<span id="confirmAcct">pedalhidrografico</span>. Tem certeza?
+      <div class="cbtns">
+        <button class="btn-cancel" id="confirmNo">Cancelar</button>
+        <button class="btn-confirm" id="confirmYes">Sim, publicar</button>
+      </div>
+    </div>
+    <div id="result"></div>
+  </div>
+
+  <!-- ── LIVE PREVIEW ── -->
+  <div class="sticky">
+    <div class="card">
+      <div class="chead">
+        <div class="avatar"></div>
+        <div>
+          <div class="uname" id="pvName">pedalhidrografico</div>
+          <div class="uloc" id="pvLoc"></div>
+        </div>
+      </div>
+      <div class="frame" id="frame">
+        <div class="empty">Selecione imagens</div>
+      </div>
+      <div class="dots" id="dots"></div>
+      <div class="actions">
+        <span>♡</span><span>💬</span><span>➤</span><span class="spacer"></span><span>🔖</span>
+      </div>
+      <div class="cap" id="pvCap"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const MAX = 2150;
+let files = [];     // File[]
+let urls = [];      // object URLs
+let idx = 0;
+
+function parseHandles(s){ return (s||"").split(/[\s,]+/).map(h=>h.replace(/^@/,"")).filter(Boolean); }
+
+function renderChips(into, list){
+  into.innerHTML = "";
+  list.forEach(h => { const c=document.createElement("span"); c.className="chip"; c.textContent="@"+h; into.appendChild(c); });
+}
+
+function escapeHtml(s){ return s.replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
+function linkify(text){
+  return escapeHtml(text)
+    .replace(/(^|\s)@([A-Za-z0-9._]+)/g, '$1<a href="#">@$2</a>')
+    .replace(/(^|\s)#([A-Za-z0-9_]+)/g, '$1<a href="#">#$2</a>')
+    .replace(/\n/g, "<br>");
+}
+
+function render(){
+  // any edit cancels a pending live-publish confirmation
+  const cb = $("confirmBar"); if(cb) cb.classList.remove("show");
+  // images
+  const frame = $("frame"), dots = $("dots");
+  if(urls.length === 0){
+    frame.innerHTML = '<div class="empty">Selecione imagens</div>';
+    dots.innerHTML = "";
+  } else {
+    idx = Math.max(0, Math.min(idx, urls.length-1));
+    const tags = parseHandles($("tagged").value);
+    let html = `<img src="${urls[idx]}" alt="">`;
+    if(urls.length > 1){
+      html += `<button class="nav prev" onclick="step(-1)">‹</button>`;
+      html += `<button class="nav next" onclick="step(1)">›</button>`;
+      html += `<div class="counter">${idx+1}/${urls.length}</div>`;
+    }
+    if(tags.length) html += `<div class="tagbadge">👤 ${tags.map(t=>"@"+t).join(", ")}</div>`;
+    frame.innerHTML = html;
+    dots.innerHTML = urls.map((_,i)=>`<span class="dot ${i===idx?'on':''}"></span>`).join("");
+  }
+
+  // header: name + collaborators + location
+  const collab = parseHandles($("collaborators").value);
+  $("pvName").innerHTML = "pedalhidrografico" +
+    (collab.length ? ` <span style="font-weight:400;color:var(--muted)">e ${collab.length} ${collab.length>1?'colaboradoras':'colaboradora'}</span>` : "");
+  $("pvLoc").textContent = $("location_name").value || "";
+
+  // caption
+  const cap = $("caption").value;
+  const posted = $("is_posted").checked;
+  $("pvCap").innerHTML = `<span class="u">pedalhidrografico</span> ${linkify(cap)}` +
+    (posted ? "" : `<span class="draftpill">rascunho</span>`);
+
+  // chips + counter
+  renderChips($("collabChips"), collab);
+  renderChips($("tagChips"), parseHandles($("tagged").value));
+  const c = $("capCount"); c.textContent = `${cap.length} / ${MAX}`;
+  c.classList.toggle("over", cap.length > MAX);
+
+  $("postedLabel").textContent = posted ? "Publicar no Instagram" : "Salvar rascunho";
+  $("go").textContent = posted ? "Publicar" : "Salvar rascunho";
+}
+
+window.step = (d) => { idx += d; render(); };
+
+$("images").addEventListener("change", (e) => {
+  urls.forEach(URL.revokeObjectURL);
+  files = Array.from(e.target.files).slice(0,10);
+  urls = files.map(f => URL.createObjectURL(f));
+  idx = 0;
+  $("imgHint").textContent = files.length ? `${files.length} imagem(ns) — ordem do carrossel.` : "A ordem dos arquivos é a ordem do carrossel.";
+  render();
+});
+["caption","collaborators","tagged","location_name","is_posted"].forEach(id =>
+  $(id).addEventListener("input", render));
+
+let DRY = true;  // set from /api/config
+
+function validateForm(){
+  const res = $("result");
+  if(files.length === 0){ res.className="result err"; res.textContent="Selecione ao menos uma imagem."; return false; }
+  if($("caption").value.length > MAX){ res.className="result err"; res.textContent="Legenda excede 2150 caracteres."; return false; }
+  return true;
+}
+
+async function sendPublish(confirm){
+  const btn = $("go"), res = $("result");
+  btn.disabled = true; res.className="result"; res.textContent="Enviando…";
+  const fd = new FormData();
+  files.forEach(f => fd.append("images", f));
+  fd.append("caption", $("caption").value);
+  fd.append("collaborators", $("collaborators").value);
+  fd.append("tagged", $("tagged").value);
+  fd.append("location_name", $("location_name").value);
+  fd.append("location_id", $("location_id").value);
+  fd.append("location_url", $("location_url").value);
+  fd.append("is_posted", $("is_posted").checked ? "true" : "false");
+  fd.append("confirm", confirm ? "true" : "false");
+
+  try {
+    const r = await fetch("/api/publish", { method:"POST", body: fd });
+    const j = await r.json();
+    if(!j.ok){ res.className="result err"; res.textContent="Erro: " + j.error; }
+    else {
+      const ig = j.instagram || {};
+      let msg = ig.dry_run ? "✅ DRY-RUN (não postou no Instagram). " :
+                ig.id ? `✅ Publicado! ${ig.permalink}\n` : "✅ Rascunho salvo.\n";
+      const v = j.validation || {};
+      if(v.ran) msg += v.conforms ? "SHACL: conforme ✔" : "SHACL VIOLAÇÕES:\n- " + v.violations.join("\n- ");
+      res.className = "result " + ((v.ran && !v.conforms) ? "err" : "ok");
+      res.textContent = msg;
+    }
+  } catch(err){ res.className="result err"; res.textContent="Falha de rede: " + err; }
+  btn.disabled = false;
+}
+
+$("go").addEventListener("click", () => {
+  if(!validateForm()) return;
+  const live = $("is_posted").checked && !DRY;   // a real post to Instagram?
+  if(live){ $("confirmBar").classList.add("show"); }  // require explicit confirm
+  else { sendPublish(false); }                        // dry-run / draft: go straight
+});
+$("confirmNo").addEventListener("click", () => $("confirmBar").classList.remove("show"));
+$("confirmYes").addEventListener("click", () => { $("confirmBar").classList.remove("show"); sendPublish(true); });
+
+// ── posts grid (app-owned, classified by SHACL) ──
+async function loadGrid(){
+  let posts = [];
+  try { posts = await (await fetch("/api/posts")).json(); } catch { posts = []; }
+  const grid = $("postsGrid"), empty = $("gridEmpty");
+  empty.style.display = posts.length ? "none" : "block";
+  grid.innerHTML = posts.map(p => {
+    const href = p.permalink ? `href="${p.permalink}" target="_blank" rel="noopener"` : "";
+    const img = p.thumb ? `<img src="${escapeHtml(p.thumb)}" alt="">` : '<div class="empty"></div>';
+    const delAttrs = p.deletable ? "" :
+      `disabled title="engajamento alto (${p.likes}♡ ${p.comments}💬 ${p.views} views) — não removível"`;
+    return `<div class="gcell">
+      <a ${href}>${img}</a>
+      <div class="meta">♡${p.likes} 💬${p.comments}${p.views?` ▶${p.views}`:""}</div>
+      <button class="del" data-sc="${escapeHtml(p.shortcode)}" ${delAttrs}>✕</button>
+    </div>`;
+  }).join("");
+  grid.querySelectorAll(".del:not([disabled])").forEach(btn =>
+    btn.addEventListener("click", () => removePost(btn.dataset.sc, btn.closest(".gcell"))));
+}
+
+function gridMsg(kind, text){
+  const m = $("gridMsg");
+  m.className = "grid-msg show " + kind;
+  m.textContent = text;
+}
+
+async function removePost(shortcode, cell){
+  if(!confirm("Remover este post? Isso apaga do Instagram (se publicado) e do registro.")) return;
+  if(cell) cell.classList.add("removing");
+  gridMsg("ok", "Removendo…");
+  const fd = new FormData(); fd.append("shortcode", shortcode);
+  try {
+    const j = await (await fetch("/api/posts/delete", { method:"POST", body: fd })).json();
+    if(!j.ok){
+      if(cell) cell.classList.remove("removing");
+      gridMsg("err", "Erro: " + (j.error || "falha ao remover."));
+    } else {
+      const ig = j.instagram || {};
+      gridMsg("ok", ig.dry_run ? "✅ Removido do registro (DRY-RUN — não apagou no Instagram)."
+                               : "✅ Post removido do Instagram e do registro.");
+      await loadGrid();   // refresh the grid (deleted post disappears)
+    }
+  } catch(err){
+    if(cell) cell.classList.remove("removing");
+    gridMsg("err", "Falha de rede: " + err);
+  }
+}
+
+// reflect dry-run state in the UI
+fetch("/api/config").then(r=>r.json()).then(c=>{
+  DRY = !!c.dry_run;
+  if(c.ig_user && !/^\d+$/.test(c.ig_user)) $("confirmAcct").textContent = c.ig_user;
+  if(DRY){ const h=document.createElement("div"); h.className="hint";
+    h.textContent="Modo DRY-RUN: não posta no Instagram (ideal pra testar local)."; $("go").after(h); }
+}).catch(()=>{});
+
+render();
+loadGrid();
+</script>
+</body>
+</html>

@@ -62,6 +62,49 @@ ph:AnnouncementImageShape a sh:NodeShape ;
     ] .
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Regras de classificação (sh:rule) — codificam as REGRAS DE NEGÓCIO da grade
+# de posts da app. Rode com SHACL-AF (pyshacl advanced=True): elas MATERIALIZAM
+# os tipos ph:VisibleInstagramPost / ph:DeletableInstagramPost no grafo, e a app
+# decide visibilidade/remoção lendo esses tipos (em vez de lógica solta no app).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Da app ⇔ publicado ATRAVÉS DESTA APP: ph:managedByApp true E ph:isPosted true.
+# (Posts puxados/externos não têm ph:managedByApp, então nunca aparecem nem
+# podem ser removidos pela grade.)
+ph:AppOwnershipRule a sh:NodeShape ;
+    sh:targetClass ph:InstagramPost ;
+    sh:rule [
+        a sh:SPARQLRule ;
+        sh:construct """
+            PREFIX ph: <https://pedalhidrografi.co/terms#>
+            CONSTRUCT { $this a ph:AppOwnedInstagramPost . }
+            WHERE { $this ph:managedByApp true ; ph:isPosted true . }
+        """ ;
+    ] .
+
+# Removível ⇔ da app E baixo engajamento: curtidas<5 E comentários<2 E
+# views<300. Contagem ausente conta como 0.
+ph:DeletabilityRule a sh:NodeShape ;
+    sh:targetClass ph:InstagramPost ;
+    sh:rule [
+        a sh:SPARQLRule ;
+        sh:construct """
+            PREFIX ph: <https://pedalhidrografi.co/terms#>
+            CONSTRUCT { $this a ph:DeletableInstagramPost . }
+            WHERE {
+                $this ph:managedByApp true ; ph:isPosted true .
+                OPTIONAL { $this ph:likeCount ?l }
+                OPTIONAL { $this ph:commentCount ?c }
+                OPTIONAL { $this ph:viewCount ?v }
+                BIND(COALESCE(?l, 0) AS ?likes)
+                BIND(COALESCE(?c, 0) AS ?comments)
+                BIND(COALESCE(?v, 0) AS ?views)
+                FILTER(?likes < 5 && ?comments < 2 && ?views < 300)
+            }
+        """ ;
+    ] .
+
+# ─────────────────────────────────────────────────────────────────────────────
 # InstagramPostShape — restrições EXTRAS de um anúncio no Instagram.
 #
 # É um ph:TourAnnouncement (ver definitions/ontology.ttl), então a
@@ -110,6 +153,18 @@ ph:InstagramPostShape a sh:NodeShape ;
         sh:maxCount 1 ;
         sh:class schema:Place ;
         sh:message "Post pode ter um único local de encontro (ph:gatheringLocation → schema:Place)."@pt ;
+    ] ;
+
+    # (f) Estado de publicação: já postado (true) ou rascunho (false).
+    # sh:defaultValue é dica pro front-end pré-preencher rascunhos como false.
+    sh:property [
+        sh:path ph:isPosted ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean ;
+        sh:defaultValue false ;
+        sh:message "Post precisa declarar se já foi publicado (ph:isPosted, booleano)."@pt ;
     ] ;
 
     # (e) De 1 a 10 fotos, EM ORDEM. A ordem importa, então as fotos são uma

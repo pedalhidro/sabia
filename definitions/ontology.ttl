@@ -2,6 +2,7 @@
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix schema: <https://schema.org/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Classes
@@ -31,6 +32,20 @@ ph:TourAnnouncement a rdfs:Class ;
 ph:Image a rdfs:Class ;
     rdfs:label "Foto"@pt ;
     rdfs:comment "Uma fotografia registrada num passeio (com timestamp e GPS — ph:ImageShape)."@pt .
+
+# Subclasses de ph:InstagramPost MATERIALIZADAS por regras SHACL (sh:rule em
+# definitions/shapes.ttl), não declaradas à mão nos dados:
+#   * AppOwnedInstagramPost   — publicado ATRAVÉS DESTA APP (a app o "possui").
+#   * DeletableInstagramPost  — app-owned E de baixo engajamento.
+ph:AppOwnedInstagramPost a rdfs:Class ;
+    rdfs:subClassOf ph:InstagramPost ;
+    rdfs:label "Post da app"@pt ;
+    rdfs:comment "Post PUBLICADO ATRAVÉS DESTA APP (regra: ph:managedByApp = true E ph:isPosted = true). Posts puxados/externos NÃO entram — só os que a app publicou são vistos/removidos pela grade."@pt .
+
+ph:DeletableInstagramPost a rdfs:Class ;
+    rdfs:subClassOf ph:AppOwnedInstagramPost ;
+    rdfs:label "Post removível"@pt ;
+    rdfs:comment "Post da app E de baixo engajamento (regra: likeCount<5 E commentCount<2 E viewCount<300; contagem ausente = 0)."@pt .
 
 # Imagem de ANÚNCIO — a foto que vai num post/mensagem. NÃO é uma ph:Image:
 # vem do Instagram/etc., que remove o EXIF, então não tem (nem precisa de)
@@ -86,6 +101,38 @@ ph:announces a rdf:Property ;
 # ─────────────────────────────────────────────────────────────────────────────
 # Propriedades introduzidas pelo ph:InstagramPost
 # ─────────────────────────────────────────────────────────────────────────────
+ph:isPosted a rdf:Property ;
+    rdfs:label "foi postado"@pt ;
+    rdfs:comment "true = já publicado no Instagram; false = rascunho ainda não publicado."@pt ;
+    rdfs:domain ph:InstagramPost ;
+    rdfs:range xsd:boolean .
+
+ph:managedByApp a rdf:Property ;
+    rdfs:label "gerenciado pela app"@pt ;
+    rdfs:comment "true = post criado/publicado por ESTA app (e portanto visível/removível na grade). Posts puxados de fora não têm esta marca."@pt ;
+    rdfs:domain ph:InstagramPost ;
+    rdfs:range xsd:boolean .
+
+ph:instagramMediaId a rdf:Property ;
+    rdfs:label "id da mídia no Instagram"@pt ;
+    rdfs:comment "Id numérico da mídia retornado pela Graph API ao publicar (p/ consultar métricas)."@pt ;
+    rdfs:domain ph:InstagramPost ;
+    rdfs:range xsd:string .
+
+ph:permalink a rdf:Property ;
+    rdfs:label "permalink"@pt ;
+    rdfs:comment "URL pública do post no Instagram."@pt ;
+    rdfs:domain ph:InstagramPost ;
+    rdfs:range xsd:anyURI .
+
+# Métricas de engajamento (preenchidas pela app a partir da Graph API).
+ph:likeCount a rdf:Property ;
+    rdfs:label "curtidas"@pt ; rdfs:domain ph:InstagramPost ; rdfs:range xsd:integer .
+ph:commentCount a rdf:Property ;
+    rdfs:label "comentários"@pt ; rdfs:domain ph:InstagramPost ; rdfs:range xsd:integer .
+ph:viewCount a rdf:Property ;
+    rdfs:label "visualizações"@pt ; rdfs:domain ph:InstagramPost ; rdfs:range xsd:integer .
+
 ph:tagAccount a rdf:Property ;
     rdfs:label "conta marcada"@pt ;
     rdfs:comment "Conta do Instagram marcada no post."@pt ;

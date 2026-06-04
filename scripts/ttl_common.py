@@ -42,7 +42,10 @@ class Post:
     location_name: Optional[str] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
-    tagged: List[str] = field(default_factory=list)  # IG usernames
+    location_url: Optional[str] = None       # e.g. IG location page
+    tagged: List[str] = field(default_factory=list)        # IG usernames
+    collaborators: List[str] = field(default_factory=list)  # IG usernames (Collab)
+    is_posted: bool = True                   # pulled posts are already live
 
 
 def new_graph() -> Graph:
@@ -56,6 +59,11 @@ def new_graph() -> Graph:
 
 def _slug(shortcode: str) -> str:
     return shortcode.replace("-", "_")
+
+
+def post_iri(shortcode: str) -> URIRef:
+    """The ph:InstagramPost IRI for a given shortcode (matches add_post)."""
+    return URIRef(PH[f"ig-{_slug(shortcode)}"])
 
 
 def _geo(g: Graph, lat: float, lng: float) -> BNode:
@@ -78,6 +86,7 @@ def add_post(g: Graph, post: Post) -> None:
 
     # ── InstagramPost (announcement) ──────────────────────────────────────
     g.add((ann, RDF.type, PH.InstagramPost))
+    g.add((ann, PH.isPosted, Literal(post.is_posted)))  # rdflib → xsd:boolean
     # Publish timestamp of the post itself (not a tour date).
     g.add((ann, DCTERMS.date, Literal(post.timestamp.isoformat(), datatype=XSD.dateTime)))
     g.add((ann, SCHEMA.articleBody, Literal((post.caption or "")[:MAX_BODY])))
@@ -86,12 +95,19 @@ def add_post(g: Graph, post: Post) -> None:
         place = BNode()
         g.add((place, RDF.type, SCHEMA.Place))
         g.add((place, SCHEMA.name, Literal(post.location_name)))
+        if post.location_url:
+            g.add((place, SCHEMA.url, URIRef(post.location_url)))
         if post.location_lat is not None and post.location_lng is not None:
             g.add((place, SCHEMA.geo, _geo(g, post.location_lat, post.location_lng)))
         g.add((ann, PH.gatheringLocation, place))
 
+    def handle_iri(h: str) -> URIRef:
+        return URIRef(f"https://www.instagram.com/{h.lstrip('@')}/")
+
     for handle in sorted(post.tagged):
-        g.add((ann, PH.tagAccount, URIRef(f"https://www.instagram.com/{handle}/")))
+        g.add((ann, PH.tagAccount, handle_iri(handle)))
+    for handle in sorted(post.collaborators):
+        g.add((ann, PH.collaborator, handle_iri(handle)))
 
     # ── Images (ordered list of ph:AnnouncementImage; no GPS needed) ───────
     img_nodes = []

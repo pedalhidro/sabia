@@ -1,0 +1,25 @@
+# Keep the Cloud Build upload small and free of secrets/junk.
+.git/
+.gitignore
+.env
+.env.*
+*.log
+
+# Python caches / local venvs
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+ENV/
+
+# Local-only uploads (images live in GCS in the cloud)
+app/uploads/
+**/uploads/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Docs not needed at build time
+*.md

@@ -25,5 +25,4 @@ ph:ig-DY0V9KkDt_2
         a schema:Place ;
         schema:name "Praça dos Arcos" ;
         schema:url <https://www.instagram.com/explore/locations/2094742/praca-dos-arcos/> ;
-        # «TODO: lat/long se quiser — a API não fornece; preencher à mão».
     ] .

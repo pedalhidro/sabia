@@ -1,0 +1,5 @@
+# Copy to terraform.tfvars and adjust. Bucket name must be globally unique.
+project_id  = "pedal-hidrografico"
+region      = "southamerica-east1"
+location    = "southamerica-east1"
+bucket_name = "pedal-hidrografico-anuncios"
