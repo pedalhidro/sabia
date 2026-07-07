@@ -109,8 +109,6 @@ def delete_post(shortcode: str = Form(...)) -> JSONResponse:
     post = next((p for p in ttl_store.app_posts(g) if p["iri"] == iri), None)
     if post is None:
         return JSONResponse({"ok": False, "error": "Post não encontrado."}, status_code=404)
-    if post is None:
-        return JSONResponse({"ok": False, "error": "Post não encontrado."}, status_code=404)
     m = get_metrics(post["media_id"]) if post["media_id"] else {"likes": 0, "comments": 0, "views": 0}
     ttl_store.set_metrics(g, iri, m["likes"], m["comments"], m["views"])
     ttl_store.run_rules(g)
