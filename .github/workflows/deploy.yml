@@ -1,0 +1,31 @@
+name: deploy
+
+# Deploy do ph-composer no Cloud Run a cada push na main. `gcloud run deploy --source .`
+# só rebuilda a imagem e publica — PRESERVA env vars, secrets (ig-access-token/ig-manage-token),
+# acesso público e escala já configurados por deploy.sh. Pra MUDAR env/secrets, rode deploy.sh
+# (ele faz o --set-env-vars/--set-secrets completo); este workflow é só código.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-cloudrun
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: deploy ph-composer
+        run: |
+          gcloud run deploy ph-composer --source . --project pedal-hidrografico --region southamerica-east1 --quiet
