@@ -110,10 +110,32 @@ def delete_media(media_id: str) -> dict:
             err = json.load(exc).get("error", {})
         except Exception:
             err = {"message": exc.read().decode("utf-8", "replace")[:300]}
+        # Se a mídia já não existe no Instagram (removida por lá), o delete NÃO é erro: o objetivo
+        # — o post não estar mais no IG — já foi alcançado. Sinaliza pra quem chama limpar o
+        # registro do dataset; senão o post vira um "fantasma" que aparece em /api/posts e é
+        # impossível de apagar (o delete falha eternamente na mídia que não existe mais).
+        if _is_missing_media(exc.code, err):
+            return {"deleted": False, "already_gone": True, "dry_run": False}
         raise PublishError(
             f"IG delete HTTP {exc.code}: {err.get('message')} "
             f"(code={err.get('code')}) — precisa da permissão instagram_manage_contents."
         )
+
+
+def _is_missing_media(http_code: int, err: dict) -> bool:
+    """A mídia não existe mais no Instagram?
+
+    A Graph API sinaliza "objeto não existe" com `error_subcode` 33 (ou `code` 100 + mensagem
+    "does not exist"/"cannot be loaded"), sempre em HTTP 400. Restringe a ISSO de propósito: um
+    400 genérico, 401/permissão ou 5xx transitório NÃO deve apagar o registro — nesses casos o
+    post pode muito bem seguir vivo no IG, e perdê-lo do dataset seria pior que o fantasma.
+    """
+    if http_code != 400:
+        return False
+    if err.get("error_subcode") == 33:
+        return True
+    msg = (err.get("message") or "").lower()
+    return err.get("code") == 100 and ("does not exist" in msg or "cannot be loaded" in msg)
 
 
 def publish(
