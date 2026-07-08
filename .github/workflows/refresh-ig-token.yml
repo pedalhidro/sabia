@@ -1,0 +1,73 @@
+name: refresh-ig-token
+
+# Renova o token long-lived do Instagram ANTES dos ~60 dias de validade e rola o ph-composer
+# pra usar a nova versão. Sem isto o token expira e o /excluir_post (e o /anuncio) quebram com
+# "Session has expired" (code 190) — foi o que aconteceu em 03-Jun.
+#
+# Assume token de INSTAGRAM-LOGIN (começa com "IG"): o refresh é um GET simples em
+# graph.instagram.com/refresh_access_token, sem app secret. Um token de Facebook-Login ("EAA")
+# usa outro fluxo (fb_exchange_token + app id/secret) — o job aborta sem mexer se detectar isso.
+#
+# Pré-requisito (uma vez): o SA ph-bot-deployer precisa poder LER e ADICIONAR versão do secret:
+#   for R in roles/secretmanager.secretAccessor roles/secretmanager.secretVersionAdder; do
+#     gcloud secrets add-iam-policy-binding ig-access-token \
+#       --member="serviceAccount:ph-bot-deployer@pedal-hidrografico.iam.gserviceaccount.com" \
+#       --role="$R" --project pedal-hidrografico
+#   done
+
+on:
+  schedule:
+    # 06:00 UTC nos dias 1 e 15 — margem folgada sobre os 60d, e o token está sempre >24h
+    # (o refresh do IG exige idade mínima de 24h). Duas chances por mês cobrem atrasos do cron.
+    - cron: '0 6 1,15 * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-cloudrun      # não roda junto com o deploy (compartilham a revisão do serviço)
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: refresh IG token + roll ph-composer
+        env:
+          PROJECT: pedal-hidrografico
+          REGION: southamerica-east1
+          SECRET: ig-access-token
+        run: |
+          set -euo pipefail
+          # Token atual (capturado, nunca ecoado — não vaza no log).
+          CUR="$(gcloud secrets versions access latest --secret="$SECRET" --project "$PROJECT")"
+          case "$CUR" in
+            IG*) : ;;
+            *) echo "::error::Token não começa com 'IG' (não é Instagram-Login) — este refresh não se aplica; Facebook-Login (EAA) usa outro fluxo. Abortando sem mexer."
+               exit 1 ;;
+          esac
+
+          # Refresh long-lived (estende +60 dias a partir de agora).
+          RESP="$(curl -sS --max-time 30 \
+            "https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${CUR}")"
+          NEW="$(printf '%s' "$RESP" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))' || true)"
+          if [ -z "$NEW" ]; then
+            echo "::error::Refresh falhou. Resposta do IG: $RESP"
+            exit 1
+          fi
+
+          # Grava nova versão do secret (via stdin — não aparece na lista de processos).
+          VER="$(printf '%s' "$NEW" | gcloud secrets versions add "$SECRET" \
+                   --data-file=- --project "$PROJECT" --format='value(name)')"
+          VER="${VER##*/}"
+          echo "Nova versão de $SECRET: $VER"
+
+          # Secrets em env var ficam PINADOS por revisão do Cloud Run — só um deploy novo pega a
+          # versão nova. `services update` numa versão explícita cria a revisão (reusa a imagem).
+          gcloud run services update ph-composer --project "$PROJECT" --region "$REGION" \
+            --update-secrets "IG_ACCESS_TOKEN=${SECRET}:${VER}" --quiet
+          echo "ph-composer rolado para ${SECRET}:${VER}."
