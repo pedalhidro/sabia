@@ -121,9 +121,11 @@ def delete_media(media_id: str) -> dict:
         # impossível de apagar (o delete falha eternamente na mídia que não existe mais).
         if _is_missing_media(exc.code, err):
             return {"deleted": False, "already_gone": True, "dry_run": False}
+        # Reporta o erro REAL do IG. (Antes cravava "precisa da permissão instagram_manage_contents"
+        # em TODO erro — enganoso: mandava caçar permissão quando era token expirado, Bad signature,
+        # etc. A mensagem do próprio IG já diz o que é.)
         raise PublishError(
-            f"IG delete HTTP {exc.code}: {err.get('message')} "
-            f"(code={err.get('code')}) — precisa da permissão instagram_manage_contents."
+            f"IG delete HTTP {exc.code}: {err.get('message')} (code={err.get('code')})"
         )
 
 
