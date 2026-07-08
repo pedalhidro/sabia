@@ -22,6 +22,11 @@ from config import Config
 IG_HOST = "https://graph.instagram.com/v21.0"   # Instagram-Login tokens (IG...)
 FB_HOST = "https://graph.facebook.com/v21.0"    # Facebook-Login tokens (EAA...)
 
+# Toda chamada ao IG roda dentro de um request do Cloud Run: sem timeout, uma resposta que
+# trava segura o worker até o gateway desistir e devolver um 502 (HTML) — que o cliente não
+# consegue interpretar. Um teto explícito transforma "trava" em erro tratável.
+_HTTP_TIMEOUT = 25
+
 
 class PublishError(RuntimeError):
     pass
@@ -37,7 +42,7 @@ def _post(path: str, params: dict) -> dict:
     data = urllib.parse.urlencode(params).encode()
     req = urllib.request.Request(f"{base}/{path}", data=data, method="POST")
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as exc:  # type: ignore[attr-defined]
         try:
@@ -53,7 +58,7 @@ def _post(path: str, params: dict) -> dict:
 def _get(path: str, params: dict) -> dict:
     base = _base(params.get("access_token", ""))
     url = f"{base}/{path}?" + urllib.parse.urlencode(params)
-    with urllib.request.urlopen(url) as resp:
+    with urllib.request.urlopen(url, timeout=_HTTP_TIMEOUT) as resp:
         return json.load(resp)
 
 
@@ -102,7 +107,7 @@ def delete_media(media_id: str) -> dict:
     url = f"{_base(token)}/{media_id}?" + urllib.parse.urlencode({"access_token": token})
     req = urllib.request.Request(url, method="DELETE")
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:
             json.load(resp)
         return {"deleted": True, "dry_run": False}
     except urllib.error.HTTPError as exc:
@@ -204,7 +209,7 @@ def _wait_ready(container_id: str, token: str, attempts: int = 20, delay: float 
             {"fields": "status_code,status", "access_token": token}
         )
         try:
-            with urllib.request.urlopen(url) as resp:
+            with urllib.request.urlopen(url, timeout=_HTTP_TIMEOUT) as resp:
                 status = json.load(resp).get("status_code")
         except Exception:
             status = None
@@ -254,7 +259,7 @@ def _get_permalink(user, token, media_id) -> str:
         {"fields": "permalink", "access_token": token}
     )
     try:
-        with urllib.request.urlopen(url) as resp:
+        with urllib.request.urlopen(url, timeout=_HTTP_TIMEOUT) as resp:
             return json.load(resp).get("permalink", "")
     except Exception:
         return ""

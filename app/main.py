@@ -101,38 +101,45 @@ def list_posts() -> JSONResponse:
 
 @app.post("/api/posts/delete")
 def delete_post(shortcode: str = Form(...)) -> JSONResponse:
-    g = ttl_store.load_dataset()
-    iri = str(ttl_store.post_iri(shortcode))
+    # Todo erro sai como JSON 4xx. Um 5xx daqui é reescrito pelo gateway numa página HTML, e o
+    # cliente (bot) perde a mensagem real — vira um "502 indisponível" opaco (foi o que escondeu
+    # o token do IG expirado). Com 4xx o erro de verdade chega no Telegram.
+    try:
+        g = ttl_store.load_dataset()
+        iri = str(ttl_store.post_iri(shortcode))
 
-    # Re-classify with fresh metrics — deletion is gated by the SHACL rules.
-    from instagram import get_metrics, delete_media, PublishError
-    post = next((p for p in ttl_store.app_posts(g) if p["iri"] == iri), None)
-    if post is None:
-        return JSONResponse({"ok": False, "error": "Post não encontrado."}, status_code=404)
-    m = get_metrics(post["media_id"]) if post["media_id"] else {"likes": 0, "comments": 0, "views": 0}
-    ttl_store.set_metrics(g, iri, m["likes"], m["comments"], m["views"])
-    ttl_store.run_rules(g)
+        # Re-classify with fresh metrics — deletion is gated by the SHACL rules.
+        from instagram import get_metrics, delete_media, PublishError
+        post = next((p for p in ttl_store.app_posts(g) if p["iri"] == iri), None)
+        if post is None:
+            return JSONResponse({"ok": False, "error": "Post não encontrado."}, status_code=404)
+        m = get_metrics(post["media_id"]) if post["media_id"] else {"likes": 0, "comments": 0, "views": 0}
+        ttl_store.set_metrics(g, iri, m["likes"], m["comments"], m["views"])
+        ttl_store.run_rules(g)
 
-    if not ttl_store.has_type(g, iri, ttl_store.PH.DeletableInstagramPost):
-        return JSONResponse(
-            {"ok": False, "blocked": True, "metrics": m,
-             "error": f"Bloqueado: engajamento alto demais (curtidas {m['likes']}, "
-                      f"comentários {m['comments']}, views {m['views']}). "
-                      "Só remove com <5 curtidas, <2 comentários e <300 views."},
-            status_code=403,
-        )
+        if not ttl_store.has_type(g, iri, ttl_store.PH.DeletableInstagramPost):
+            return JSONResponse(
+                {"ok": False, "blocked": True, "metrics": m,
+                 "error": f"Bloqueado: engajamento alto demais (curtidas {m['likes']}, "
+                          f"comentários {m['comments']}, views {m['views']}). "
+                          "Só remove com <5 curtidas, <2 comentários e <300 views."},
+                status_code=403,
+            )
 
-    # 1) delete on Instagram (real posts), 2) remove from dataset.
-    deleted = {"deleted": False, "dry_run": Config.DRY_RUN}
-    if post["media_id"]:
-        try:
-            deleted = delete_media(post["media_id"])
-        except PublishError as exc:
-            log.error("Instagram delete failed for media %s: %s", post["media_id"], exc)
-            return JSONResponse({"ok": False, "error": str(exc)}, status_code=502)
-    ttl_store.remove_post(g, iri)
-    ttl_store.save_dataset(g)
-    return JSONResponse({"ok": True, "instagram": deleted})
+        # 1) delete on Instagram (real posts), 2) remove from dataset.
+        deleted = {"deleted": False, "dry_run": Config.DRY_RUN}
+        if post["media_id"]:
+            try:
+                deleted = delete_media(post["media_id"])
+            except PublishError as exc:
+                log.error("Instagram delete failed for media %s: %s", post["media_id"], exc)
+                return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        ttl_store.remove_post(g, iri)
+        ttl_store.save_dataset(g)
+        return JSONResponse({"ok": True, "instagram": deleted})
+    except Exception as exc:  # noqa: BLE001 — nunca estoure num 5xx opaco; devolve o motivo real
+        log.exception("delete_post falhou para %s", shortcode)
+        return JSONResponse({"ok": False, "error": f"Erro interno ao excluir: {exc}"}, status_code=400)
 
 
 def _slugify(text: str) -> str:
