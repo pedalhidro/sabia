@@ -1,7 +1,11 @@
 fastapi>=0.110
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9
-rdflib>=7.0
+# rdflib <7.6 quebra com pyparsing 3.2 (Param.postParse2 TypeError ao parsear
+# as sh:rule SPARQL) — o resolver do container chegou a instalar essa combinação
+# e derrubou o classify()/grade. Pisos = a combinação testada localmente.
+rdflib>=7.6
+pyparsing>=3.2
 google-cloud-storage>=2.16
 # optional: live SHACL check after each publish
-pyshacl>=0.26
+pyshacl>=0.31

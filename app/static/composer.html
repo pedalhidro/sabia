@@ -3,19 +3,18 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Pedal Hidrográfico — Novo post</title>
+<title>Pedal Hidrográfico — Novo anúncio</title>
 <style>
   :root { --line:#dbdbdb; --muted:#8e8e8e; --ig:#0095f6; --bg:#fafafa; }
   * { box-sizing: border-box; }
   body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
          background:var(--bg); color:#262626; }
-  .wrap { display:grid; grid-template-columns: 1fr 460px; gap:32px; max-width:1100px; margin:24px auto; padding:0 16px; }
+  .page { max-width:1100px; margin:24px auto; padding:0 16px; }
+  .wrap { display:grid; grid-template-columns: 1fr 460px; gap:32px; }
   @media (max-width:880px){ .wrap{ grid-template-columns:1fr; } }
   h1 { font-size:20px; margin:0 0 10px; }
   .intro { font-size:13px; color:#444; background:#f0f6ff; border:1px solid #d6e4ff; border-radius:8px;
-           padding:10px 12px; margin:0 0 18px; line-height:1.5; }
-  .intro ol { margin:6px 0 0; padding-left:18px; }
-  .intro li { margin:2px 0; }
+           padding:10px 12px; margin:0 0 14px; line-height:1.5; }
   label { display:block; font-weight:600; font-size:13px; margin:14px 0 6px; }
   textarea, input[type=text] { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px;
          font:inherit; background:#fff; }
@@ -23,6 +22,7 @@
   .row { display:flex; gap:10px; }
   .row > * { flex:1; }
   .hint { color:var(--muted); font-size:12px; margin-top:4px; }
+  .hint.warn { color:#c2410c; }
   .count { float:right; font-weight:400; color:var(--muted); }
   .count.over { color:#ed4956; }
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
@@ -46,8 +46,34 @@
   .btn-cancel { background:#efefef; }
   .result { margin-top:14px; padding:12px; border-radius:8px; font-size:13px; white-space:pre-wrap; }
   .result.ok { background:#e7f6ec; } .result.err { background:#fdecea; }
+  .copyrow { margin-top:10px; }
+  .copyrow button { background:#efefef; border:0; border-radius:8px; padding:8px 12px; font-size:13px; cursor:pointer; }
 
-  /* ── posts grid ── */
+  /* ── tabs ── */
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 16px; }
+  .tab { display:flex; align-items:center; gap:6px; border:1px solid var(--line); background:#fff;
+         border-radius:20px; padding:7px 14px; font-size:14px; cursor:pointer; }
+  .tab.on { border-color:var(--ig); background:#eaf5ff; font-weight:600; }
+  .tab .dot { width:8px; height:8px; border-radius:50%; background:#c7c7c7; }
+  .tab .dot.ok { background:#2fb344; }
+  .pane { display:none; }
+  .pane.on { display:block; }
+  .target { font-size:12px; color:var(--muted); margin:2px 0 0; }
+  .target b { color:#444; }
+
+  /* ── recent announcements ── */
+  .recent { margin-top:8px; }
+  .ritem { display:flex; gap:8px; align-items:center; font-size:13px; padding:6px 8px; border:1px solid var(--line);
+           border-radius:8px; background:#fff; margin-bottom:6px; }
+  .ritem img { width:34px; height:34px; object-fit:cover; border-radius:6px; flex:none; }
+  .ritem .rtxt { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ritem .rdate { color:var(--muted); font-size:11px; flex:none; }
+  .ritem .rdel { flex:none; border:1px solid var(--line); background:#fff; color:#c2410c;
+                 border-radius:6px; font-size:11px; padding:2px 6px; cursor:pointer; }
+  .ritem .rdel:hover { background:#fff1f2; }
+  .recent-empty { color:var(--muted); font-size:12px; }
+
+  /* ── posts grid (Instagram) ── */
   .grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin:8px 0 6px; }
   .gcell { position:relative; aspect-ratio:1/1; border-radius:6px; overflow:hidden; background:#efefef;
            border:1px solid var(--line); }
@@ -92,93 +118,188 @@
   .cap a { color:#00376b; text-decoration:none; }
   .draftpill { display:inline-block; font-size:11px; font-weight:600; color:#c2410c; background:#ffedd5;
          border-radius:10px; padding:1px 8px; margin-left:6px; vertical-align:middle; }
+
+  /* ── previews dos demais canais ── */
+  .pv { border:1px solid var(--line); border-radius:10px; overflow:hidden; max-width:460px; background:#fff; }
+  .pv .phead { display:flex; align-items:center; gap:10px; padding:10px 14px; font-size:13px; }
+  .pv .phead .pavatar { width:32px; height:32px; border-radius:50%; flex:none; }
+  .pv .pbody { padding:0 14px 14px; font-size:14px; line-height:1.45; white-space:pre-wrap; word-break:break-word; }
+  .pv img.pimg { max-width:100%; border-radius:8px; display:block; }
+  .pvempty { color:var(--muted); font-size:13px; }
+  /* WhatsApp */
+  .wa-bg { background:#e5ddd5; padding:18px 14px; }
+  .wa-bubble { background:#d9fdd3; border-radius:10px; padding:8px 10px; max-width:88%; margin-left:auto;
+               box-shadow:0 1px 1px rgba(0,0,0,.12); font-size:14px; line-height:1.4;
+               white-space:pre-wrap; word-break:break-word; }
+  .wa-bubble img { width:100%; border-radius:8px; margin-bottom:6px; display:block; }
+  .wa-time { text-align:right; font-size:10px; color:#5b7a5b; margin-top:3px; }
+  /* Telegram */
+  .tg-bg { background:#d7e5f0; padding:18px 14px; }
+  .tg-bubble { background:#fff; border-radius:12px; padding:8px 10px; max-width:88%;
+               box-shadow:0 1px 1px rgba(0,0,0,.1); font-size:14px; line-height:1.4;
+               white-space:pre-wrap; word-break:break-word; }
+  .tg-bubble .tg-title { font-weight:600; color:#3a6d99; font-size:13px; margin-bottom:3px; }
+  .tg-imgs { display:grid; gap:2px; border-radius:8px; overflow:hidden; margin-bottom:6px; }
+  .tg-imgs img { width:100%; height:100%; object-fit:cover; display:block; aspect-ratio:4/3; }
+  .tg-time { text-align:right; font-size:10px; color:#8aa4b8; margin-top:3px; }
+  /* Mastodon */
+  .ms-imgs { display:grid; gap:3px; border-radius:8px; overflow:hidden; margin-top:8px; }
+  .ms-imgs img { width:100%; height:100%; object-fit:cover; display:block; aspect-ratio:16/9; }
+  .ms-foot { display:flex; gap:22px; padding:10px 14px; color:var(--muted); font-size:15px;
+             border-top:1px solid #f0f0f0; margin-top:10px; }
+  /* Reddit */
+  .rd-sub { font-size:12px; color:var(--muted); }
+  .rd-title { font-weight:600; font-size:16px; margin:4px 0 6px; }
+  .rd-thumbs { display:flex; gap:4px; margin-top:8px; }
+  .rd-thumbs img { width:72px; height:72px; object-fit:cover; border-radius:6px; }
+  /* E-mail */
+  .em-head { font-size:13px; padding:12px 14px; border-bottom:1px solid #f0f0f0; }
+  .em-head div { margin:2px 0; color:#444; }
+  .em-head b { display:inline-block; min-width:64px; color:var(--muted); font-weight:600; }
+  .em-att { display:flex; flex-wrap:wrap; gap:6px; padding:0 14px 12px; }
+  .em-att span { background:#efefef; border-radius:6px; padding:3px 8px; font-size:12px; }
+
+  /* ── ajustador de imagens (cortar/preencher/esticar) ── */
+  .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:50;
+              align-items:center; justify-content:center; }
+  .modal-bg.show { display:flex; }
+  .modal { background:#fff; border-radius:12px; padding:16px; width:min(500px, 94vw);
+           max-height:92vh; overflow:auto; }
+  .mhead { font-weight:600; display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .mhead .mclose { margin-left:auto; border:0; background:#efefef; border-radius:50%;
+                   width:28px; height:28px; cursor:pointer; }
+  .mrow { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:8px 0; font-size:13px; }
+  .mbtn { border:1px solid var(--line); background:#fff; border-radius:16px; padding:6px 12px;
+          font-size:13px; cursor:pointer; }
+  .mbtn.on { border-color:var(--ig); background:#eaf5ff; font-weight:600; }
+  .mbtn.primary { background:var(--ig); color:#fff; border-color:var(--ig); }
+  .mcanvas { position:relative; display:flex; align-items:center; justify-content:center;
+             background:#f0f0f0; border-radius:8px; padding:8px; }
+  .mcanvas canvas { max-width:100%; max-height:52vh; border-radius:4px; touch-action:none; cursor:grab; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <!-- ── FORM ── -->
-  <div>
-    <h1>Novo post do @<span id="acct">pedalhidrografico</span></h1>
-
-    <div class="intro">
-      Componha um post à direita e veja o preview ao vivo.
-      <ol>
-        <li>Escolha as imagens (a ordem é a do carrossel) e escreva a legenda.</li>
-        <li>Se quiser, marque contas, convide colaboradoras e defina o local.</li>
-        <li><b>Publicar</b> posta no Instagram (pede confirmação); desligue p/ salvar rascunho.</li>
-      </ol>
-      A grade abaixo lista os posts que esta app publicou — clique p/ abrir; o ✕ remove (só com baixo engajamento).
-    </div>
-
-    <label>Posts publicados por esta app</label>
-    <div class="grid-msg" id="gridMsg"></div>
-    <div class="grid" id="postsGrid"></div>
-    <div class="grid-empty" id="gridEmpty" style="display:none">Nenhum post ainda.</div>
-
-    <label>Imagens (1–10, na ordem)</label>
-    <input type="file" id="images" accept="image/*" multiple />
-    <div class="hint" id="imgHint">A ordem dos arquivos é a ordem do carrossel.</div>
-
-    <label>Legenda <span class="count" id="capCount">0 / 2150</span></label>
-    <textarea id="caption" placeholder="Escreva a legenda…  Use @perfil e #hashtag"></textarea>
-
-    <div class="row">
-      <div>
-        <label>Colaboradoras (@)</label>
-        <input type="text" id="collaborators" placeholder="@conta1, @conta2" />
-        <div class="chips" id="collabChips"></div>
-      </div>
-      <div>
-        <label>Marcar contas (@)</label>
-        <input type="text" id="tagged" placeholder="@conta3, @conta4" />
-        <div class="chips" id="tagChips"></div>
-      </div>
-    </div>
-
-    <label>Local de encontro</label>
-    <input type="text" id="location_name" placeholder="Nome (ex.: Praça dos Arcos)" />
-    <div class="row" style="margin-top:8px">
-      <input type="text" id="location_id" placeholder="IG location id (ex.: 2094742)" />
-      <input type="text" id="location_url" placeholder="URL da localização (opcional)" />
-    </div>
-
-    <div class="toggle">
-      <label class="switch" style="margin:0">
-        <input type="checkbox" id="is_posted" checked /><span class="slider"></span>
-      </label>
-      <span id="postedLabel">Publicar no Instagram</span>
-    </div>
-    <div class="hint">Desligado = salvar como rascunho (ph:isPosted false), sem postar.</div>
-
-    <button class="publish" id="go">Publicar</button>
-    <div class="confirm" id="confirmBar">
-      ⚠️ Isso vai publicar <b>AO VIVO</b> em @<span id="confirmAcct">pedalhidrografico</span>. Tem certeza?
-      <div class="cbtns">
-        <button class="btn-cancel" id="confirmNo">Cancelar</button>
-        <button class="btn-confirm" id="confirmYes">Sim, publicar</button>
-      </div>
-    </div>
-    <div id="result"></div>
+<div class="page">
+  <h1>Novo anúncio do Pedal Hidrográfico 📣</h1>
+  <!-- Aviso do relógio do IG_MANAGE_TOKEN (apagar) — preenchido no bootstrap
+       quando o acesso a dados estiver a ≤21 dias de expirar (renovação manual). -->
+  <div id="tokenWarn" style="display:none;background:#fff7ed;border:1px solid #fdba74;
+       color:#9a3412;border-radius:8px;padding:10px 12px;margin:0 0 12px;font-size:14px"></div>
+  <div class="intro">
+    Comece pela aba <b>🌐 Universal</b>: escreva os blocos de texto (o bloco N
+    entra só nos canais em que cabe), escolha até 20 imagens e <b>derive</b> —
+    a app preenche cada aba com o texto cortado na escada e as imagens
+    recortadas na proporção ideal do canal. Revise e publique canal a canal.
+    Alternativa manual: componha numa aba e use <b>📋 copiar</b>.
   </div>
+  <div class="tabs" id="tabs"></div>
 
-  <!-- ── LIVE PREVIEW ── -->
-  <div class="sticky">
-    <div class="card">
-      <div class="chead">
-        <div class="avatar"></div>
-        <div>
-          <div class="uname" id="pvName">pedalhidrografico</div>
-          <div class="uloc" id="pvLoc"></div>
+  <div class="wrap">
+    <!-- ── FORMULÁRIOS ── -->
+    <div>
+      <!-- Instagram (aba especial: marcações, colaboradoras, local, grade) -->
+      <section class="pane" data-ch="instagram">
+        <div class="target" id="igTarget">→ @<span id="acct">pedalhidrografico</span></div>
+
+        <label>Posts publicados por esta app</label>
+        <div class="grid-msg" id="gridMsg"></div>
+        <div class="grid" id="postsGrid"></div>
+        <div class="grid-empty" id="gridEmpty" style="display:none">Nenhum post ainda.</div>
+
+        <label>Imagens (1–10, na ordem)</label>
+        <input type="file" id="images" accept="image/*" multiple />
+        <div class="hint" id="imgHint">A ordem dos arquivos é a ordem do carrossel.</div>
+        <div class="copyrow"><button id="adjust-instagram">✂️ Ajustar proporção das imagens</button></div>
+
+        <label>Legenda <span class="count" id="capCount">0 / 2150</span></label>
+        <textarea id="caption" placeholder="Escreva a legenda…  Use @perfil e #hashtag"></textarea>
+        <div class="copyrow"><button id="copy-instagram">📋 Copiar texto e imagens pras outras abas</button></div>
+
+        <div class="row">
+          <div>
+            <label>Colaboradoras (@)</label>
+            <input type="text" id="collaborators" placeholder="@conta1, @conta2" />
+            <div class="chips" id="collabChips"></div>
+          </div>
+          <div>
+            <label>Marcar contas (@)</label>
+            <input type="text" id="tagged" placeholder="@conta3, @conta4" />
+            <div class="chips" id="tagChips"></div>
+          </div>
         </div>
+
+        <label>Local de encontro</label>
+        <input type="text" id="location_name" placeholder="Nome (ex.: Praça dos Arcos)" />
+        <div class="row" style="margin-top:8px">
+          <input type="text" id="location_id" placeholder="IG location id (ex.: 2094742)" />
+          <input type="text" id="location_url" placeholder="URL da localização (opcional)" />
+        </div>
+
+        <div class="toggle">
+          <label class="switch" style="margin:0">
+            <input type="checkbox" id="is_posted" checked /><span class="slider"></span>
+          </label>
+          <span id="postedLabel">Publicar no Instagram</span>
+        </div>
+        <div class="hint">Desligado = salvar como rascunho (ph:isPosted false), sem postar.</div>
+
+        <button class="publish" id="go">Publicar</button>
+        <div class="confirm" id="confirmBar">
+          ⚠️ Isso vai publicar <b>AO VIVO</b> em @<span id="confirmAcct">pedalhidrografico</span>. Tem certeza?
+          <div class="cbtns">
+            <button class="btn-cancel" id="confirmNo">Cancelar</button>
+            <button class="btn-confirm" id="confirmYes">Sim, publicar</button>
+          </div>
+        </div>
+        <div id="result"></div>
+      </section>
+
+      <!-- demais canais: gerados pelo JS -->
+      <div id="panesHost"></div>
+    </div>
+
+    <!-- ── PREVIEW ── -->
+    <div class="sticky">
+      <div class="card" id="igCard">
+        <div class="chead">
+          <div class="avatar"></div>
+          <div>
+            <div class="uname" id="pvName">pedalhidrografico</div>
+            <div class="uloc" id="pvLoc"></div>
+          </div>
+        </div>
+        <div class="frame" id="frame">
+          <div class="empty">Selecione imagens</div>
+        </div>
+        <div class="dots" id="dots"></div>
+        <div class="actions">
+          <span>♡</span><span>💬</span><span>➤</span><span class="spacer"></span><span>🔖</span>
+        </div>
+        <div class="cap" id="pvCap"></div>
       </div>
-      <div class="frame" id="frame">
-        <div class="empty">Selecione imagens</div>
-      </div>
-      <div class="dots" id="dots"></div>
-      <div class="actions">
-        <span>♡</span><span>💬</span><span>➤</span><span class="spacer"></span><span>🔖</span>
-      </div>
-      <div class="cap" id="pvCap"></div>
+      <div id="chPreview" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── ajustador de imagens: corta/preenche/estica pra proporção do canal ── -->
+<div class="modal-bg" id="adjModal">
+  <div class="modal">
+    <div class="mhead">✂️ Ajustar imagem <span id="adjCounter"></span>
+      <button class="mclose" id="adjClose">✕</button></div>
+    <div class="mrow" id="adjRatios"></div>
+    <div class="mrow" id="adjModes">
+      <button class="mbtn on" data-mode="crop">Cortar</button>
+      <button class="mbtn" data-mode="fill">Preencher (desfoque)</button>
+      <button class="mbtn" data-mode="stretch">Esticar</button>
+    </div>
+    <div class="mcanvas"><canvas id="adjCanvas"></canvas></div>
+    <div class="mrow" id="adjMulti" style="display:none"></div>
+    <div class="hint" id="adjHint">No modo Cortar, arraste a imagem pra enquadrar. ⭐ = proporção ideal do canal.</div>
+    <div class="mrow" style="justify-content:flex-end">
+      <button class="mbtn" id="adjPrev">‹ anterior</button>
+      <button class="mbtn" id="adjNext">próxima ›</button>
+      <button class="mbtn primary" id="adjApply">Aplicar nesta imagem</button>
     </div>
   </div>
 </div>
@@ -186,23 +307,950 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const MAX = 2150;
-let files = [];     // File[]
-let urls = [];      // object URLs
-let idx = 0;
 
-function parseHandles(s){ return (s||"").split(/[\s,]+/).map(h=>h.replace(/^@/,"")).filter(Boolean); }
+// Canais além do Instagram. Limites de TEXTO espelham definitions/shapes.ttl;
+// os de MÍDIA (formatos, bytes, proporção) chegam de /api/config → "media",
+// lidos das próprias shapes (fonte da verdade única).
+const CH = {
+  universal:{ label:"Universal", icon:"🌐" },   // aba especial: matriz do cross-post
+  reel:     { label:"Reel", icon:"🎬", maxText:2150, maxImages:1, video:true,
+              textLabel:"Legenda (funciona igual à do post)", targetLabel:"conta do Instagram" },
+  whatsapp: { label:"WhatsApp", icon:"🟢", maxText:2150, maxImages:1,
+              textLabel:"Mensagem", targetLabel:"grupo de anúncios da Comunidade" },
+  telegram: { label:"Telegram", icon:"✈️", maxText:1024, maxImages:10,
+              textLabel:"Mensagem (vira legenda das fotos)", targetLabel:"canal/grupo" },
+  mastodon: { label:"Mastodon", icon:"🐘", maxText:500, maxImages:4,
+              textLabel:"Toot", targetLabel:"instância" },
+  reddit:   { label:"Reddit", icon:"👽", maxText:40000, maxImages:20, needsText:false,
+              hasTitle:true, maxTitle:300, titleLabel:"Título", textLabel:"Corpo (opcional)",
+              hasSub:true, targetLabel:"subreddit" },
+  email:    { label:"E-mail", icon:"✉️", maxText:100000, maxImages:20,
+              hasTitle:true, maxTitle:255, titleLabel:"Assunto", textLabel:"Corpo",
+              hasTo:true, toLabel:"Para (vírgulas separam)", targetLabel:"lista" },
+  gcal:     { label:"Agenda", icon:"📅", maxText:2150, maxImages:0, needsText:false,
+              hasTitle:true, maxTitle:255, titleLabel:"Título do evento",
+              textLabel:"Descrição (opcional)", hasEvent:true,
+              targetLabel:"Google Agenda (calendario.pedalhidrografi.co)" },
+};
+const ORDER = ["universal", "instagram", "reel", "whatsapp", "telegram", "mastodon", "reddit", "email", "gcal"];
+const ST = {};                    // estado por canal (≠ IG/universal): {files, urls}
+ORDER.filter(k => k !== "universal" && k !== "instagram")
+     .forEach(k => ST[k] = { files: [], urls: [] });
+const UNI = { files: [], urls: [] };   // imagens ORIGINAIS da matriz universal
+const DERIVED = {};               // canal → IRI do ph:UniversalPost de origem
+let cur = "universal";
+let DRY = true;                   // de /api/config
+let CFG = { channels: {}, media: {} };
 
-function renderChips(into, list){
-  into.innerHTML = "";
-  list.forEach(h => { const c=document.createElement("span"); c.className="chip"; c.textContent="@"+h; into.appendChild(c); });
+function allPub(){ return ORDER.filter(k => k !== "universal"); }
+function chMaxText(k){ return k === "instagram" ? MAX : CH[k].maxText; }
+
+// A escada de blocos do post universal, derivada dos limites dos canais:
+// o bloco N só entra nos canais cujo limite comporta a soma dos blocos 1..N.
+function uniLadder(){
+  const lims = [...new Set(allPub().map(chMaxText))].sort((a, b) => a - b);
+  let prev = 0;
+  return lims.map(L => {
+    const tier = { limit: L, budget: L - prev,
+                   excluded: allPub().filter(k => chMaxText(k) < L) };
+    prev = L;
+    return tier;
+  });
+}
+function tierLabel(tier){
+  const name = k => k === "instagram" ? "Instagram" : CH[k].label;
+  if (!tier.excluded.length) return "todos os canais";
+  const included = allPub().filter(k => !tier.excluded.includes(k));
+  if (included.length <= 2) return "só " + included.map(name).join(" e ");
+  return "todos menos " + tier.excluded.map(name).join(", ");
 }
 
-function escapeHtml(s){ return s.replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
+// Resposta como JSON, com fallback legível: se a origem (ou a Cloudflare, nos
+// 5xx) devolver HTML/texto, vira {ok:false, error} em vez de SyntaxError.
+async function respJson(r){
+  const t = await r.text();
+  try { return JSON.parse(t); }
+  catch { return { ok:false, error:`HTTP ${r.status} — resposta não-JSON do servidor (${t.replace(/<[^>]*>/g," ").trim().slice(0,140)}…)` }; }
+}
+function parseHandles(s){ return (s||"").split(/[\s,]+/).map(h=>h.replace(/^@/,"")).filter(Boolean); }
+function escapeHtml(s){ return (s||"").replace(/[&<>"]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m])); }
 function linkify(text){
   return escapeHtml(text)
     .replace(/(^|\s)@([A-Za-z0-9._]+)/g, '$1<a href="#">@$2</a>')
     .replace(/(^|\s)#([A-Za-z0-9_]+)/g, '$1<a href="#">#$2</a>')
     .replace(/\n/g, "<br>");
+}
+function renderChips(into, list){
+  into.innerHTML = "";
+  list.forEach(h => { const c=document.createElement("span"); c.className="chip"; c.textContent="@"+h; into.appendChild(c); });
+}
+function fmtMB(bytes){ return (bytes/1048576).toFixed(bytes >= 10485760 ? 0 : 1) + " MB"; }
+function ratioLabel(r){
+  const known = {0.5625:"9:16", 0.8:"4:5", 1:"1:1", 1.33:"4:3", 1.78:"16:9", 1.91:"1.91:1"};
+  return known[r] || r.toFixed(2);
+}
+
+// ── abas ─────────────────────────────────────────────────────────────────────
+function buildTabs(){
+  $("tabs").innerHTML = ORDER.map(k => {
+    const label = k === "instagram" ? "Instagram" : CH[k].label;
+    const icon = k === "instagram" ? "📷" : CH[k].icon;
+    const dot = k === "universal" ? "" : `<span class="dot" data-dot="${k}"></span>`;
+    return `<button class="tab ${k===cur?'on':''}" data-ch="${k}">
+      <span>${icon}</span> ${label} ${dot}</button>`;
+  }).join("");
+  document.querySelectorAll(".tab").forEach(b =>
+    b.addEventListener("click", () => setTab(b.dataset.ch)));
+  refreshDots();
+}
+function refreshDots(){
+  document.querySelectorAll("[data-dot]").forEach(d => {
+    const st = CFG.channels[d.dataset.dot];
+    d.classList.toggle("ok", !!(st && st.configured));
+    d.title = st && st.configured ? "configurado" : "não configurado (só rascunho/dry-run)";
+  });
+}
+function setTab(k){
+  cur = k;
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.ch === k));
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.dataset.ch === k));
+  $("igCard").style.display = k === "instagram" ? "" : "none";
+  $("chPreview").style.display = k === "instagram" ? "none" : "";
+  if (k === "instagram") render(); else { chRender(k); loadRecent(k); }
+}
+
+// ── aba universal: a matriz do cross-post ────────────────────────────────────
+function buildUniversalPane(){
+  const ladder = uniLadder();
+  const blocksHtml = ladder.map((t, i) => `
+    <label>Bloco ${i + 1} — ${tierLabel(t)}
+      <span class="count" id="f-universal-b${i + 1}count">0 / ${t.budget}</span></label>
+    <textarea id="f-universal-b${i + 1}" style="min-height:${i < 2 ? 90 : 60}px"
+      placeholder="soma dos blocos 1–${i + 1} ≤ ${t.limit} caracteres"></textarea>`).join("");
+
+  const sec = document.createElement("section");
+  sec.className = "pane";
+  sec.dataset.ch = "universal";
+  sec.innerHTML = `
+    <div class="target">→ matriz do cross-post: escreva UMA vez, derive pra todas as abas.
+      Os blocos são emendados em sequência (sem separador automático) — o bloco N
+      só entra nos canais em que a soma 1..N cabe.</div>
+    <label>Título (Reddit/e-mail) <span class="count" id="f-universal-titlecount">0 / 255</span></label>
+    <input type="text" id="f-universal-title" placeholder="opcional — senão a 1ª linha do bloco 1 vira título/assunto" />
+    ${blocksHtml}
+    <label>Imagens (até 20, na ordem)</label>
+    <input type="file" id="f-universal-images" accept="image/*" multiple />
+    <div class="hint" id="f-universal-imghint">Cada canal leva as primeiras que couberem, recortadas na proporção ⭐ dele ao derivar.</div>
+    <div class="copyrow"><button id="adjust-universal">✂️ Ajustar proporção das imagens</button></div>
+    <button class="publish" id="f-universal-go">🌐 Registrar e derivar pra todas as abas</button>
+    <div class="hint">Isso grava o ph:UniversalPost e preenche as abas — NADA é publicado ainda;
+      revise cada canal e publique um a um (cada anúncio sai com prov:wasDerivedFrom).</div>
+    <div id="f-universal-result"></div>
+    <label>Posts universais já registrados</label>
+    <div class="recent" id="f-universal-recent"><div class="recent-empty">Carregando…</div></div>`;
+  $("panesHost").appendChild(sec);
+
+  $("f-universal-title").addEventListener("input", uniUpdate);
+  ladder.forEach((_, i) => $(`f-universal-b${i + 1}`).addEventListener("input", uniUpdate));
+  $("f-universal-images").addEventListener("change", e => {
+    UNI.urls.forEach(URL.revokeObjectURL);
+    UNI.files = Array.from(e.target.files).slice(0, 20);
+    UNI.urls = UNI.files.map(f => URL.createObjectURL(f));
+    $("f-universal-imghint").textContent =
+      `${UNI.files.length} imagem(ns) — recortadas por canal ao derivar.`;
+    uniUpdate();
+  });
+  $("adjust-universal").addEventListener("click", () => openAdjuster("universal"));
+  $("f-universal-go").addEventListener("click", deriveUniversal);
+}
+
+function uniBlocks(){
+  const blocks = uniLadder().map((_, i) => $(`f-universal-b${i + 1}`).value);
+  while (blocks.length && !blocks[blocks.length - 1].trim()) blocks.pop();
+  return blocks;
+}
+
+function uniUpdate(){
+  const ladder = uniLadder();
+  ladder.forEach((t, i) => {
+    const v = $(`f-universal-b${i + 1}`).value, c = $(`f-universal-b${i + 1}count`);
+    c.textContent = `${v.length} / ${t.budget}`;
+    c.classList.toggle("over", v.length > t.budget);
+  });
+  const t = $("f-universal-title").value, tc = $("f-universal-titlecount");
+  tc.textContent = `${t.length} / 255`;
+  tc.classList.toggle("over", t.length > 255);
+  if (cur === "universal") chRender("universal");
+}
+
+// Recorte automático: cover centrado na proporção do canal, JPEG 1080px.
+// Sem ratio (e-mail) devolve o arquivo original.
+function cropToRatio(file, ratio){
+  return new Promise(res => {
+    if (!ratio || !file.type.startsWith("image/")) return res(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      const W = 1080, H = Math.round(1080 / ratio);
+      const cv = document.createElement("canvas");
+      cv.width = W; cv.height = H;
+      const ctx = cv.getContext("2d");
+      const cover = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+      const dw = img.naturalWidth * cover, dh = img.naturalHeight * cover;
+      ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      cv.toBlob(b => res(b
+        ? new File([b], file.name.replace(/\.[^.]+$/, "") + `-${ratioLabel(ratio).replace(":", "x")}.jpg`,
+                   { type: "image/jpeg" })
+        : file), "image/jpeg", 0.92);
+    };
+    img.onerror = () => res(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function deriveUniversal(){
+  const res = $("f-universal-result"), btn = $("f-universal-go");
+  const ladder = uniLadder();
+  const blocks = uniBlocks();
+  const err = m => { res.className = "result err"; res.textContent = m; };
+  if (!blocks.length || !blocks[0].trim()) return err("Escreva o bloco 1 — é o que entra em todos os canais.");
+  if (blocks.some(b => !b.trim())) return err("Preencha os blocos em sequência, sem pular.");
+  for (let i = 0; i < blocks.length; i++)
+    if (blocks[i].length > ladder[i].budget)
+      return err(`Bloco ${i + 1} excede ${ladder[i].budget} caracteres.`);
+  const title = $("f-universal-title").value.trim();
+  if (title.length > 255) return err("Título excede 255 caracteres.");
+
+  // 1) grava a matriz (nunca publica em rede)
+  btn.disabled = true; res.className = "result"; res.textContent = "Registrando a matriz…";
+  const fd = new FormData();
+  fd.append("channel", "universal");
+  fd.append("title", title);
+  blocks.forEach(b => fd.append("blocks", b));
+  UNI.files.forEach(f => fd.append("images", f));
+  let j;
+  try { j = await respJson(await fetch("/api/publish", { method: "POST", body: fd })); }
+  catch (e){ btn.disabled = false; return err("Falha de rede: " + e); }
+  if (!j.ok){ btn.disabled = false; return err("Erro: " + j.error); }
+
+  // 2) deriva texto (escada) + imagens (recorte por canal) pra cada aba
+  res.textContent = "Recortando imagens e preenchendo as abas…";
+  const fallbackTitle = (title || blocks[0].split("\n")[0]).trim();
+  for (const k of allPub()){
+    const limit = chMaxText(k);
+    let text = "";
+    for (const b of blocks){ if (text.length + b.length > limit) break; text += b; }
+    DERIVED[k] = j.iri;
+    if (k === "instagram"){
+      $("caption").value = text;
+      if (UNI.files.length){
+        files = await Promise.all(UNI.files.slice(0, 10).map(f =>
+          cropToRatio(f, (CFG.media.instagram || {}).recommended_ratio)));
+        urls.forEach(URL.revokeObjectURL);
+        urls = files.map(f => URL.createObjectURL(f));
+        idx = 0;
+        igMediaHints();
+      }
+      render();
+    } else {
+      const c = CH[k];
+      $(`f-${k}-text`).value = text;
+      if (c.hasTitle) $(`f-${k}-title`).value = fallbackTitle.slice(0, c.maxTitle);
+      if (c.maxImages > 0 && !c.video && UNI.files.length){
+        ST[k].urls.forEach(URL.revokeObjectURL);
+        ST[k].files = await Promise.all(UNI.files.slice(0, c.maxImages).map(f =>
+          cropToRatio(f, (CFG.media[k] || {}).recommended_ratio)));
+        ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
+        mediaHints(k);
+      }
+      chUpdate(k);
+    }
+  }
+  btn.disabled = false;
+  res.className = "result ok";
+  let msg = "🌐 Matriz registrada e abas preenchidas — revise cada canal e publique.";
+  const v = j.validation || {};
+  if (v.ran) msg += v.conforms ? " SHACL: conforme ✔" : "\nSHACL VIOLAÇÕES:\n- " + v.violations.join("\n- ");
+  res.textContent = msg;
+  loadRecent("universal");
+  chRender("universal");
+}
+
+// ── formulários dos demais canais ────────────────────────────────────────────
+function buildPane(k){
+  const c = CH[k];
+  const st = CFG.channels[k] || {};
+  const media = CFG.media[k] || {};
+  const parts = [];
+  parts.push(`<div class="target">→ ${c.targetLabel}${st.target ? `: <b>${escapeHtml(st.target)}</b>` : ""}
+    ${st.configured ? "" : ' — <span style="color:#c2410c">não configurado (publica só em dry-run)</span>'}</div>`);
+  if (c.hasTitle)
+    parts.push(`<label>${c.titleLabel} <span class="count" id="f-${k}-titlecount">0 / ${c.maxTitle}</span></label>
+      <input type="text" id="f-${k}-title" />`);
+  parts.push(`<label>${c.textLabel} <span class="count" id="f-${k}-count">0 / ${c.maxText}</span></label>
+    <textarea id="f-${k}-text"></textarea>
+    <div class="copyrow"><button id="copy-${k}">📋 Copiar texto e imagens pras outras abas</button></div>`);
+  if (c.hasEvent)
+    parts.push(`<label>Início do evento</label>
+      <input type="datetime-local" id="f-${k}-start" />
+      <label>Fim (opcional — sem ele, o evento dura 3h)</label>
+      <input type="datetime-local" id="f-${k}-end" />
+      <label>Local de encontro (opcional)</label>
+      <input type="text" id="f-${k}-place" placeholder="ex.: Praça da Nascente, Vila Madalena" />`);
+  if (c.hasTo)
+    parts.push(`<label>${c.toLabel}</label>
+      <input type="text" id="f-${k}-to" placeholder="${escapeHtml(st.target || "")}" />`);
+  if (c.hasSub)
+    parts.push(`<label>Subreddit</label>
+      <input type="text" id="f-${k}-sub" placeholder="${escapeHtml(st.target || "r/…")}" />`);
+  if (c.video){
+    const specs = [];
+    if (media.video_formats && media.video_formats.length)
+      specs.push(media.video_formats.map(f => f.split("/")[1].toUpperCase()).join("/"));
+    if (media.max_video_bytes) specs.push("até " + fmtMB(media.max_video_bytes));
+    if (media.min_video_seconds && media.max_video_seconds)
+      specs.push(`${media.min_video_seconds}s a ${Math.round(media.max_video_seconds / 60)}min`);
+    if (media.recommended_ratio) specs.push("ideal " + ratioLabel(media.recommended_ratio) + " (em pé)");
+    parts.push(`<label>Vídeo</label>
+      <input type="file" id="f-${k}-images"
+             accept="${(media.video_formats || ["video/*"]).join(",")}" />
+      <div class="hint" id="f-${k}-imghint">${specs.join(" · ")}</div>`);
+  } else if (c.maxImages > 0){
+    const specs = [];
+    if (media.image_formats && media.image_formats.length)
+      specs.push(media.image_formats.map(f => f.split("/")[1].toUpperCase()).join("/"));
+    if (media.max_image_bytes) specs.push("até " + fmtMB(media.max_image_bytes));
+    if (media.recommended_ratio) specs.push("ideal " + ratioLabel(media.recommended_ratio));
+    parts.push(`<label>Imagens (até ${c.maxImages})</label>
+      <input type="file" id="f-${k}-images" multiple
+             accept="${(media.image_formats || ["image/*"]).join(",")}" />
+      <div class="hint" id="f-${k}-imghint">${specs.join(" · ")}</div>
+      <div class="copyrow"><button id="adjust-${k}">✂️ Ajustar proporção das imagens</button></div>`);
+  }
+  parts.push(`<div class="toggle">
+      <label class="switch" style="margin:0">
+        <input type="checkbox" id="f-${k}-posted" checked /><span class="slider"></span>
+      </label>
+      <span id="f-${k}-postedlabel">Publicar no ${c.label}</span>
+    </div>
+    <div class="hint">Desligado = salvar como rascunho (ph:isPosted false), sem enviar.</div>
+    <button class="publish" id="f-${k}-go">Publicar</button>
+    <div class="confirm" id="f-${k}-confirm">
+      ⚠️ Isso vai publicar <b>AO VIVO</b> no ${c.label}. Tem certeza?
+      <div class="cbtns">
+        <button class="btn-cancel" id="f-${k}-no">Cancelar</button>
+        <button class="btn-confirm" id="f-${k}-yes">Sim, publicar</button>
+      </div>
+    </div>
+    <div id="f-${k}-result"></div>
+    <label>Anúncios já registrados</label>
+    <div class="recent" id="f-${k}-recent"><div class="recent-empty">Carregando…</div></div>`);
+
+  const sec = document.createElement("section");
+  sec.className = "pane";
+  sec.dataset.ch = k;
+  sec.innerHTML = parts.join("\n");
+  $("panesHost").appendChild(sec);
+  wirePane(k);
+}
+
+function wirePane(k){
+  const c = CH[k];
+  ["text", "title", "to", "sub", "start", "end", "place"].forEach(f => {
+    const el = $(`f-${k}-${f}`);
+    if (el) el.addEventListener("input", () => chUpdate(k));
+  });
+  const posted = $(`f-${k}-posted`);
+  posted.addEventListener("input", () => chUpdate(k));
+  const imgs = $(`f-${k}-images`);
+  if (imgs) imgs.addEventListener("change", e => {
+    ST[k].urls.forEach(URL.revokeObjectURL);
+    ST[k].files = Array.from(e.target.files).slice(0, c.maxImages);
+    ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
+    if (c.video) videoHints(k); else mediaHints(k);
+    chUpdate(k);
+  });
+  const adj = $(`adjust-${k}`);
+  if (adj) adj.addEventListener("click", () => openAdjuster(k));
+  $(`copy-${k}`).addEventListener("click", () => copyAcross(k));
+  $(`f-${k}-go`).addEventListener("click", () => {
+    if (!chValidate(k)) return;
+    const live = posted.checked && !DRY;
+    if (live) $(`f-${k}-confirm`).classList.add("show");
+    else chSend(k, false);
+  });
+  $(`f-${k}-no`).addEventListener("click", () => $(`f-${k}-confirm`).classList.remove("show"));
+  $(`f-${k}-yes`).addEventListener("click", () => {
+    $(`f-${k}-confirm`).classList.remove("show"); chSend(k, true);
+  });
+}
+
+// Confere as imagens contra a espec. do shape (formato, bytes, proporção) e
+// escreve avisos no hint — o servidor barra de verdade, aqui é orientação.
+function mediaHints(k){
+  const media = CFG.media[k] || {}, hint = $(`f-${k}-imghint`);
+  if (!hint) return;
+  const warns = [];
+  ST[k].files.forEach(f => {
+    if (media.image_formats && media.image_formats.length && !media.image_formats.includes(f.type))
+      warns.push(`${f.name}: formato ${f.type || "?"} não aceito`);
+    if (media.max_image_bytes && f.size > media.max_image_bytes)
+      warns.push(`${f.name}: ${fmtMB(f.size)} passa do limite de ${fmtMB(media.max_image_bytes)}`);
+  });
+  const done = () => {
+    hint.className = "hint" + (warns.length ? " warn" : "");
+    hint.textContent = warns.length ? "⚠️ " + warns.join(" · ")
+      : `${ST[k].files.length} imagem(ns) selecionada(s).`;
+  };
+  // proporção da primeira imagem vs. faixa/recomendação do shape
+  if (ST[k].urls.length && (media.min_ratio || media.max_ratio || media.recommended_ratio)){
+    const im = new Image();
+    im.onload = () => {
+      const r = im.naturalWidth / im.naturalHeight;
+      if (media.min_ratio && media.max_ratio && (r < media.min_ratio || r > media.max_ratio))
+        warns.push(`proporção ${r.toFixed(2)} fora da faixa aceita ` +
+                   `${ratioLabel(media.min_ratio)}–${ratioLabel(media.max_ratio)}`);
+      else if (media.recommended_ratio && Math.abs(r - media.recommended_ratio) > 0.3)
+        warns.push(`proporção ${r.toFixed(2)} — o ideal do canal é ${ratioLabel(media.recommended_ratio)}`);
+      done();
+    };
+    im.onerror = done;
+    im.src = ST[k].urls[0];
+  } else done();
+}
+
+// Vídeo (Reel): checa formato, tamanho, duração e proporção contra a espec.
+// do shape via os metadados do próprio <video>.
+function videoHints(k){
+  const media = CFG.media[k] || {}, hint = $(`f-${k}-imghint`);
+  if (!hint) return;
+  const f = ST[k].files[0], warns = [];
+  const done = () => {
+    hint.className = "hint" + (warns.length ? " warn" : "");
+    if (warns.length) hint.textContent = "⚠️ " + warns.join(" · ");
+    else if (f) hint.textContent = `${f.name} selecionado.`;
+  };
+  if (!f) return done();
+  if (media.video_formats && media.video_formats.length && !media.video_formats.includes(f.type))
+    warns.push(`formato ${f.type || "?"} não aceito (${media.video_formats.join(", ")})`);
+  if (media.max_video_bytes && f.size > media.max_video_bytes)
+    warns.push(`${fmtMB(f.size)} passa do limite de ${fmtMB(media.max_video_bytes)}`);
+  const v = document.createElement("video");
+  v.preload = "metadata";
+  v.onloadedmetadata = () => {
+    if (media.min_video_seconds && v.duration < media.min_video_seconds)
+      warns.push(`só ${v.duration.toFixed(1)}s — mínimo é ${media.min_video_seconds}s`);
+    if (media.max_video_seconds && v.duration > media.max_video_seconds)
+      warns.push(`${Math.round(v.duration)}s passa do máximo de ${media.max_video_seconds}s`);
+    if (media.recommended_ratio && v.videoHeight > 0){
+      const r = v.videoWidth / v.videoHeight;
+      if (Math.abs(r - media.recommended_ratio) > 0.15)
+        warns.push(`proporção ${r.toFixed(2)} — o Reel é ${ratioLabel(media.recommended_ratio)} em pé (vai ganhar barras)`);
+    }
+    done();
+  };
+  v.onerror = done;
+  v.src = ST[k].urls[0];
+}
+
+function chUpdate(k){
+  const c = CH[k];
+  $(`f-${k}-confirm`).classList.remove("show");
+  const text = $(`f-${k}-text`).value;
+  const count = $(`f-${k}-count`);
+  count.textContent = `${text.length} / ${c.maxText}`;
+  count.classList.toggle("over", text.length > c.maxText);
+  if (c.hasTitle){
+    const t = $(`f-${k}-title`).value, tc = $(`f-${k}-titlecount`);
+    tc.textContent = `${t.length} / ${c.maxTitle}`;
+    tc.classList.toggle("over", t.length > c.maxTitle);
+  }
+  const posted = $(`f-${k}-posted`).checked;
+  $(`f-${k}-postedlabel`).textContent = posted ? `Publicar no ${c.label}` : "Salvar rascunho";
+  $(`f-${k}-go`).textContent = posted ? "Publicar" : "Salvar rascunho";
+  if (cur === k) chRender(k);
+}
+
+function chValidate(k){
+  const c = CH[k], res = $(`f-${k}-result`);
+  const text = $(`f-${k}-text`).value.trim();
+  const err = (m) => { res.className = "result err"; res.textContent = m; return false; };
+  if (c.video && !ST[k].files.length) return err("Escolha o vídeo do Reel.");
+  if (c.hasEvent && !$(`f-${k}-start`).value) return err("Falta a data/hora de início do evento.");
+  if (c.hasEvent && $(`f-${k}-end`).value && $(`f-${k}-end`).value <= $(`f-${k}-start`).value)
+    return err("O fim do evento precisa ser depois do início.");
+  if (c.hasTitle && !$(`f-${k}-title`).value.trim()) return err(`Falta o ${c.titleLabel.toLowerCase()}.`);
+  if ((c.needsText !== false) && !text) return err("Escreva a mensagem.");
+  if (text.length > c.maxText) return err(`Texto excede ${c.maxText} caracteres.`);
+  if (c.hasTitle && $(`f-${k}-title`).value.length > c.maxTitle) return err(`Título excede ${c.maxTitle} caracteres.`);
+  return true;
+}
+
+async function chSend(k, confirmFlag){
+  const btn = $(`f-${k}-go`), res = $(`f-${k}-result`);
+  btn.disabled = true; res.className = "result"; res.textContent = "Enviando…";
+  const fd = new FormData();
+  fd.append("channel", k);
+  fd.append("text", $(`f-${k}-text`).value);
+  if (CH[k].hasTitle) fd.append("title", $(`f-${k}-title`).value);
+  if (CH[k].hasTo) fd.append("to", $(`f-${k}-to`).value);
+  if (CH[k].hasSub) fd.append("subreddit", $(`f-${k}-sub`).value);
+  if (CH[k].hasEvent){
+    fd.append("event_start", $(`f-${k}-start`).value);
+    fd.append("event_end", $(`f-${k}-end`).value);
+    fd.append("event_location", $(`f-${k}-place`).value);
+  }
+  ST[k].files.forEach(f => fd.append("images", f));
+  if (DERIVED[k]) fd.append("derived_from", DERIVED[k]);   // prov:wasDerivedFrom
+  fd.append("is_posted", $(`f-${k}-posted`).checked ? "true" : "false");
+  fd.append("confirm", confirmFlag ? "true" : "false");
+  try {
+    const r = await fetch("/api/publish", { method: "POST", body: fd });
+    const j = await respJson(r);
+    if (!j.ok){ res.className = "result err"; res.textContent = "Erro: " + j.error; }
+    else {
+      const p = j.result || {};
+      let msg = p.dry_run ? `✅ DRY-RUN (não enviou pro ${CH[k].label}). `
+              : p.id ? `✅ Publicado!${p.permalink ? " " + p.permalink : ""}\n` : "✅ Rascunho salvo.\n";
+      const v = j.validation || {};
+      if (v.ran) msg += v.conforms ? "SHACL: conforme ✔" : "SHACL VIOLAÇÕES:\n- " + v.violations.join("\n- ");
+      res.className = "result " + ((v.ran && !v.conforms) ? "err" : "ok");
+      res.textContent = msg;
+      loadRecent(k);
+    }
+  } catch (e){ res.className = "result err"; res.textContent = "Falha de rede: " + e; }
+  btn.disabled = false;
+}
+
+async function loadRecent(k){
+  const host = $(`f-${k}-recent`);
+  if (!host) return;
+  let items = [];
+  try { items = await (await fetch(`/api/announcements?channel=${k}`)).json(); } catch { items = []; }
+  if (!Array.isArray(items) || !items.length){
+    host.innerHTML = '<div class="recent-empty">Nenhum anúncio ainda.</div>'; return;
+  }
+  host.innerHTML = items.slice(0, 8).map(a => {
+    const when = (a.date || "").slice(0, 10);
+    const label = escapeHtml(a.title || a.text || "(sem texto)");
+    const img = a.thumb ? `<img src="${escapeHtml(a.thumb)}" alt="">` : "";
+    const pill = a.is_posted ? "" : '<span class="draftpill">rascunho</span>';
+    const link = a.permalink ? ` <a href="${escapeHtml(a.permalink)}" target="_blank" rel="noopener">abrir</a>` : "";
+    // ✕ só quando o servidor diz que dá: rascunho, ou publicado há <24h num
+    // canal com des-envio (Telegram/Mastodon/WhatsApp/Agenda).
+    const del = a.deletable ? `<button class="rdel" data-iri="${escapeHtml(a.iri)}"
+        title="apagar (rascunho, ou publicado há menos de 24h)">✕</button>` : "";
+    return `<div class="ritem">${img}<div class="rtxt">${label}${pill}${link}</div>
+            <div class="rdate">${when}</div>${del}</div>`;
+  }).join("");
+  host.querySelectorAll(".rdel").forEach(b => b.addEventListener("click", async () => {
+    if (b.dataset.arm !== "1"){            // 1º clique arma, 2º confirma
+      b.dataset.arm = "1"; b.textContent = "confirma?";
+      setTimeout(() => { b.dataset.arm = ""; b.textContent = "✕"; }, 4000);
+      return;
+    }
+    b.disabled = true; b.textContent = "…";
+    const fd = new FormData(); fd.append("iri", b.dataset.iri);
+    const j = await respJson(await fetch("/api/announcements/delete", { method: "POST", body: fd }));
+    const res = $(`f-${k}-result`);
+    if (res){
+      res.className = "result " + (j.ok ? "ok" : "err");
+      res.textContent = j.ok ? "🗑️ Anúncio apagado." : "Erro ao apagar: " + j.error;
+    }
+    loadRecent(k);
+  }));
+}
+
+// ── cross-posting: copiar conteúdo desta aba pras outras ─────────────────────
+function copyAcross(from){
+  const text = from === "instagram" ? $("caption").value : $(`f-${from}-text`).value;
+  const title = (from !== "instagram" && CH[from].hasTitle) ? $(`f-${from}-title`).value : "";
+  // vídeo não vira imagem: copiando DO Reel, só o texto viaja
+  const srcFiles = from === "instagram" ? files : (CH[from].video ? [] : ST[from].files);
+  const firstLine = (title || text.split("\n")[0] || "").trim();
+
+  ORDER.filter(k => k !== from).forEach(k => {
+    if (k === "instagram"){
+      $("caption").value = text.slice(0, MAX);
+      if (srcFiles.length){
+        files = srcFiles.slice(0, 10);
+        urls.forEach(URL.revokeObjectURL);
+        urls = files.map(f => URL.createObjectURL(f));
+        idx = 0;
+        $("imgHint").textContent = `${files.length} imagem(ns) — ordem do carrossel.`;
+        igMediaHints();
+      }
+      render();
+    } else {
+      const c = CH[k];
+      $(`f-${k}-text`).value = text.slice(0, c.maxText);
+      if (c.hasTitle) $(`f-${k}-title`).value = firstLine.slice(0, c.maxTitle);
+      if (c.maxImages > 0 && !c.video && srcFiles.length){  // imagem não vira vídeo
+        ST[k].urls.forEach(URL.revokeObjectURL);
+        ST[k].files = srcFiles.slice(0, c.maxImages);
+        ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
+        mediaHints(k);
+      }
+      chUpdate(k);
+    }
+  });
+  const res = from === "instagram" ? $("result") : $(`f-${from}-result`);
+  res.className = "result ok";
+  res.textContent = "📋 Conteúdo copiado pras outras abas (cortado nos limites de cada canal).";
+}
+
+// ── previews dos demais canais ───────────────────────────────────────────────
+function grid2(urls_){
+  return `style="grid-template-columns:repeat(${urls_.length > 1 ? 2 : 1},1fr)"`;
+}
+function chRender(k){
+  const host = $("chPreview");
+  const text = $(`f-${k}-text`) ? $(`f-${k}-text`).value : "";
+  const posted = $(`f-${k}-posted`) ? $(`f-${k}-posted`).checked : true;
+  const pill = posted ? "" : '<span class="draftpill">rascunho</span>';
+  const u = ST[k] ? ST[k].urls : [];
+  const now = new Date().toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"});
+  let html = "";
+  if (k === "universal"){
+    // plano de derivação: o que cada canal vai receber com os blocos atuais
+    const blocks = uniBlocks();
+    const rows = allPub().map(kk => {
+      const c = kk === "instagram"
+        ? { label: "Instagram", icon: "📷", maxImages: 10 } : CH[kk];
+      const limit = chMaxText(kk);
+      let text2 = "";
+      for (const b of blocks){ if (text2.length + b.length > limit) break; text2 += b; }
+      const ratio = (CFG.media[kk] || {}).recommended_ratio;
+      const nImg = c.video ? 0 : Math.min(UNI.files.length, c.maxImages || 0);
+      const midia = c.video ? "vídeo à parte"
+        : nImg ? `${nImg} img${ratio ? " → " + ratioLabel(ratio) : ""}` : "—";
+      return `<tr><td style="padding:3px 0">${c.icon} ${c.label}</td>
+        <td>${text2.length}/${limit}</td><td>${midia}</td></tr>`;
+    }).join("");
+    html = `<div class="pv"><div class="pbody" style="padding:14px">
+      <b>🌐 Plano de derivação</b>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;margin-top:8px">
+        <tr style="color:var(--muted)"><td>canal</td><td>texto</td><td>mídia</td></tr>${rows}</table>
+      <div class="hint" style="margin-top:8px">O bloco N entra só nos canais em que a soma
+        dos blocos 1..N cabe; as imagens saem recortadas na proporção ⭐ de cada canal.</div>
+    </div></div>`;
+  } else if (k === "reel"){
+    const vid = u[0]
+      ? `<video src="${u[0]}" controls muted loop playsinline
+           style="width:100%;height:100%;object-fit:contain;background:#000"></video>`
+      : '<div class="empty" style="display:flex;align-items:center;justify-content:center;height:100%;color:#8e8e8e">Escolha o vídeo</div>';
+    html = `<div class="pv" style="background:#000;color:#fff">
+      <div style="aspect-ratio:9/16;max-height:66vh;margin:0 auto;position:relative">${vid}
+        <div style="position:absolute;left:12px;right:56px;bottom:12px;font-size:13px;
+                    text-shadow:0 1px 2px rgba(0,0,0,.8);pointer-events:none">
+          <b>pedalhidrografico</b> ${pill}<br>
+          <span style="opacity:.95">${linkify(text) || '<span style="opacity:.6">Escreva a legenda…</span>'}</span>
+        </div>
+        <div style="position:absolute;right:10px;bottom:16px;display:flex;flex-direction:column;
+                    gap:14px;font-size:20px;text-shadow:0 1px 2px rgba(0,0,0,.8)">
+          <span>♡</span><span>💬</span><span>➤</span></div>
+      </div></div>`;
+  } else if (k === "whatsapp"){
+    html = `<div class="pv"><div class="phead">
+        <div class="pavatar" style="background:#25d366"></div>
+        <div><b>Pedal Hidrográfico</b> · Comunidade ${pill}</div></div>
+      <div class="wa-bg"><div class="wa-bubble">
+        ${u[0] ? `<img src="${u[0]}" alt="">` : ""}${linkify(text) || '<span class="pvempty">Escreva a mensagem…</span>'}
+        <div class="wa-time">${now} ✓✓</div>
+      </div></div></div>`;
+  } else if (k === "telegram"){
+    const imgs = u.length ? `<div class="tg-imgs" ${grid2(u)}>${u.map(x=>`<img src="${x}">`).join("")}</div>` : "";
+    html = `<div class="pv"><div class="phead">
+        <div class="pavatar" style="background:#2aabee"></div>
+        <div><b>Pedal Hidrográfico</b> · canal ${pill}</div></div>
+      <div class="tg-bg"><div class="tg-bubble">
+        <div class="tg-title">Pedal Hidrográfico</div>
+        ${imgs}${linkify(text) || '<span class="pvempty">Escreva a mensagem…</span>'}
+        <div class="tg-time">${now} 👁 137</div>
+      </div></div></div>`;
+  } else if (k === "mastodon"){
+    const imgs = u.length ? `<div class="ms-imgs" ${grid2(u)}>${u.map(x=>`<img src="${x}">`).join("")}</div>` : "";
+    html = `<div class="pv"><div class="phead">
+        <div class="pavatar" style="background:linear-gradient(45deg,#6364ff,#563acc)"></div>
+        <div><b>Pedal Hidrográfico</b> ${pill}<br>
+          <span style="color:var(--muted)">@pedalhidrografico</span></div></div>
+      <div class="pbody">${linkify(text) || '<span class="pvempty">Escreva o toot…</span>'}${imgs}</div>
+      <div class="ms-foot"><span>↩</span><span>🔁</span><span>⭐</span><span>🔖</span></div></div>`;
+  } else if (k === "reddit"){
+    const sub = $(`f-${k}-sub`).value || (CFG.channels.reddit || {}).target || "r/…";
+    const title = $(`f-${k}-title`).value;
+    const thumbs = u.length ? `<div class="rd-thumbs">${u.slice(0,5).map(x=>`<img src="${x}">`).join("")}</div>` : "";
+    html = `<div class="pv"><div class="pbody" style="padding:14px">
+        <div class="rd-sub">${escapeHtml(sub.startsWith("r/") ? sub : "r/" + sub)} · agora ${pill}</div>
+        <div class="rd-title">${escapeHtml(title) || '<span class="pvempty">Título…</span>'}</div>
+        ${linkify(text)}${thumbs}
+        <div class="rd-sub" style="margin-top:8px">⬆ 1 · 💬 0 · compartilhar</div></div></div>`;
+  } else if (k === "email"){
+    const to = $(`f-${k}-to`).value || (CFG.channels.email || {}).target || "…";
+    const att = ST[k].files.length
+      ? `<div class="em-att">${ST[k].files.map(f=>`<span>📎 ${escapeHtml(f.name)}</span>`).join("")}</div>` : "";
+    html = `<div class="pv"><div class="em-head">
+        <div><b>De</b> Pedal Hidrográfico</div>
+        <div><b>Para</b> ${escapeHtml(to)}</div>
+        <div><b>Assunto</b> ${escapeHtml($(`f-${k}-title`).value) || '<span class="pvempty">Assunto…</span>'} ${pill}</div></div>
+      <div class="pbody" style="padding-top:12px">${linkify(text) || '<span class="pvempty">Escreva o corpo…</span>'}</div>${att}</div>`;
+  } else if (k === "gcal"){
+    const title = $(`f-${k}-title`) ? $(`f-${k}-title`).value : "";
+    const start = $(`f-${k}-start`) ? $(`f-${k}-start`).value : "";
+    const end = $(`f-${k}-end`) ? $(`f-${k}-end`).value : "";
+    const place = $(`f-${k}-place`) ? $(`f-${k}-place`).value : "";
+    const fmt = v => v ? new Date(v).toLocaleString("pt-BR",
+      {weekday:"short", day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit"}) : "";
+    const endTime = end ? new Date(end).toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"})
+                        : (start ? "(+3h)" : "");
+    const day = start ? new Date(start) : null;
+    html = `<div class="pv"><div class="pbody" style="padding:14px">
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div style="text-align:center;min-width:52px;border:1px solid var(--line);border-radius:8px;overflow:hidden">
+          <div style="background:#1a73e8;color:#fff;font-size:11px;padding:2px 6px">
+            ${day ? day.toLocaleString("pt-BR",{month:"short"}).replace(".","") : "mês"}</div>
+          <div style="font-size:20px;padding:4px 6px">${day ? day.getDate() : "--"}</div>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:16px;font-weight:600">${escapeHtml(title) || '<span class="pvempty">Título do evento…</span>'} ${pill}</div>
+          <div style="color:var(--muted);font-size:13px;margin-top:2px">
+            🕗 ${start ? `${fmt(start)} – ${endTime}` : "defina o início"}</div>
+          ${place ? `<div style="color:var(--muted);font-size:13px">📍 ${escapeHtml(place)}</div>` : ""}
+          <div style="margin-top:8px;font-size:14px">${linkify(text) || '<span class="pvempty">Descrição (opcional)…</span>'}</div>
+          <div style="color:var(--muted);font-size:12px;margin-top:10px">
+            📅 Google Agenda do grupo — aparece ao vivo em calendario.pedalhidrografi.co</div>
+        </div>
+      </div></div></div>`;
+  }
+  host.innerHTML = html;
+}
+
+// ── ajustador de imagens ─────────────────────────────────────────────────────
+// Reencoda a imagem no navegador (canvas → JPEG 1080px) pra caber na proporção
+// do canal — a alvo vem da espec. das shapes (recomendada = ⭐; faixa aceita
+// filtra os presets). Três modos: cortar (cover, arrastável), preencher
+// (contain sobre fundo borrado) e esticar (distorce).
+const ADJ = { ch: null, i: 0, img: null, mode: "crop", ratio: 1, ox: 0.5, oy: 0.5 };
+const RATIO_PRESETS = [["9:16", 0.5625], ["4:5", 0.8], ["1:1", 1], ["4:3", 4/3],
+                       ["16:9", 16/9], ["1.91:1", 1.91]];
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+
+function chFileList(ch){
+  if (ch === "instagram") return files;
+  if (ch === "universal") return UNI.files;
+  return ST[ch].files;
+}
+
+function openAdjuster(ch){
+  const list = chFileList(ch);
+  const msg = ch === "instagram" ? $("result") : $(`f-${ch}-result`);
+  if (!list.length){ msg.className = "result err"; msg.textContent = "Selecione imagens primeiro."; return; }
+  ADJ.ch = ch; ADJ.i = 0; ADJ.mode = "crop"; ADJ.ox = ADJ.oy = 0.5;
+  const media = CFG.media[ch] || {};
+  ADJ.ratio = media.recommended_ratio || 1;
+  buildRatioChips(media);
+  syncModeBtns();
+  loadAdjImage();
+  $("adjModal").classList.add("show");
+}
+function closeAdjuster(){ $("adjModal").classList.remove("show"); ADJ.img = null; }
+
+function buildRatioChips(media){
+  let presets = RATIO_PRESETS;
+  if (media.min_ratio && media.max_ratio)   // só o que a plataforma aceita
+    presets = presets.filter(([, r]) => r >= media.min_ratio - 1e-6 && r <= media.max_ratio + 1e-6);
+  if (!presets.some(([, r]) => Math.abs(r - ADJ.ratio) < 1e-3)) ADJ.ratio = presets[0][1];
+  $("adjRatios").innerHTML = "Proporção: " + presets.map(([lab, r]) => {
+    const star = media.recommended_ratio && Math.abs(r - media.recommended_ratio) < 1e-3 ? " ⭐" : "";
+    return `<button class="mbtn ratio ${Math.abs(r - ADJ.ratio) < 1e-3 ? "on" : ""}" data-r="${r}">${lab}${star}</button>`;
+  }).join("");
+  $("adjRatios").querySelectorAll(".ratio").forEach(b => b.addEventListener("click", () => {
+    ADJ.ratio = parseFloat(b.dataset.r);
+    $("adjRatios").querySelectorAll(".ratio").forEach(x => x.classList.toggle("on", x === b));
+    drawAdj();
+  }));
+}
+
+function syncModeBtns(){
+  $("adjModes").querySelectorAll("[data-mode]").forEach(b =>
+    b.classList.toggle("on", b.dataset.mode === ADJ.mode));
+}
+
+function loadAdjImage(){
+  const list = chFileList(ADJ.ch);
+  ADJ.i = Math.max(0, Math.min(ADJ.i, list.length - 1));
+  $("adjCounter").textContent = `(${ADJ.i + 1}/${list.length})`;
+  ADJ.ox = ADJ.oy = 0.5;
+  const img = new Image();
+  img.onload = () => { URL.revokeObjectURL(img.src); ADJ.img = img; drawAdj(); };
+  img.src = URL.createObjectURL(list[ADJ.i]);
+}
+
+function drawAdj(){
+  if (!ADJ.img) return;
+  const img = ADJ.img, cv = $("adjCanvas"), ctx = cv.getContext("2d");
+  cv.width = 1080;                              // largura padrão de export (IG)
+  cv.height = Math.round(1080 / ADJ.ratio);
+  const W = cv.width, H = cv.height, sw = img.naturalWidth, sh = img.naturalHeight;
+  ctx.clearRect(0, 0, W, H);
+  if (ADJ.mode === "stretch"){
+    ctx.drawImage(img, 0, 0, W, H);
+  } else if (ADJ.mode === "fill"){
+    const cover = Math.max(W / sw, H / sh);     // fundo: cover borrado + véu
+    ctx.filter = "blur(40px)";
+    ctx.drawImage(img, (W - sw * cover) / 2, (H - sh * cover) / 2, sw * cover, sh * cover);
+    ctx.filter = "none";
+    ctx.fillStyle = "rgba(0,0,0,.15)";
+    ctx.fillRect(0, 0, W, H);
+    const fit = Math.min(W / sw, H / sh);       // frente: contain
+    ctx.drawImage(img, (W - sw * fit) / 2, (H - sh * fit) / 2, sw * fit, sh * fit);
+  } else {                                      // crop: cover com offset arrastável
+    const cover = Math.max(W / sw, H / sh);
+    const dw = sw * cover, dh = sh * cover;
+    ctx.drawImage(img, (W - dw) * ADJ.ox, (H - dh) * ADJ.oy, dw, dh);
+  }
+  updateAdjMulti();
+}
+
+// Na aba universal: tira de mini-previews mostrando como o estado ATUAL do
+// editor fica em cada canal (recorte central na proporção ⭐ — exatamente o
+// que a derivação vai fazer). Canais com a mesma proporção se agrupam.
+function adjRatioGroups(){
+  const groups = new Map();
+  allPub().forEach(k => {
+    const isIG = k === "instagram";
+    const c = CH[k];
+    if (!isIG && (c.video || !(c.maxImages > 0))) return;   // Reel/Agenda fora
+    const r = (CFG.media[k] || {}).recommended_ratio || null;
+    const key = r ? r.toFixed(4) : "orig";
+    if (!groups.has(key)) groups.set(key, { ratio: r, icons: [] });
+    groups.get(key).icons.push(isIG ? "📷" : c.icon);
+  });
+  return [...groups.values()];
+}
+
+function updateAdjMulti(){
+  const host = $("adjMulti");
+  if (ADJ.ch !== "universal" || !ADJ.img){ host.style.display = "none"; return; }
+  host.style.display = "flex";
+  host.innerHTML = "";
+  const label = document.createElement("div");
+  label.className = "hint";
+  label.style.width = "100%";
+  label.textContent = "Como fica em cada canal (recorte central na proporção ⭐ ao derivar):";
+  host.appendChild(label);
+  const src = $("adjCanvas");
+  adjRatioGroups().forEach(gr => {
+    const r = gr.ratio || (src.width / src.height);   // sem ⭐ (e-mail) = original
+    const cv = document.createElement("canvas");
+    cv.height = 72;
+    cv.width = Math.max(24, Math.round(72 * r));
+    const ctx = cv.getContext("2d");
+    const cover = Math.max(cv.width / src.width, cv.height / src.height);
+    const dw = src.width * cover, dh = src.height * cover;
+    ctx.drawImage(src, (cv.width - dw) / 2, (cv.height - dh) / 2, dw, dh);
+    cv.style.borderRadius = "4px";
+    const cell = document.createElement("div");
+    cell.style.textAlign = "center";
+    cell.appendChild(cv);
+    const cap = document.createElement("div");
+    cap.className = "hint";
+    cap.style.marginTop = "2px";
+    cap.textContent = `${gr.icons.join("")} ${gr.ratio ? ratioLabel(gr.ratio) : "original"}`;
+    cell.appendChild(cap);
+    host.appendChild(cell);
+  });
+}
+
+function applyAdj(){
+  const list = chFileList(ADJ.ch);
+  const old = list[ADJ.i];
+  $("adjCanvas").toBlob(blob => {
+    if (!blob) return;
+    const name = (old.name || "img").replace(/\.[^.]+$/, "") + "-ajustada.jpg";
+    const nf = new File([blob], name, { type: "image/jpeg" });   // sempre JPEG (o IG exige)
+    if (ADJ.ch === "instagram"){
+      files[ADJ.i] = nf;
+      urls.forEach(URL.revokeObjectURL);
+      urls = files.map(f => URL.createObjectURL(f));
+      igMediaHints(); render();
+    } else if (ADJ.ch === "universal"){
+      UNI.files[ADJ.i] = nf;
+      UNI.urls.forEach(URL.revokeObjectURL);
+      UNI.urls = UNI.files.map(f => URL.createObjectURL(f));
+      if (cur === "universal") chRender("universal");
+    } else {
+      ST[ADJ.ch].files[ADJ.i] = nf;
+      ST[ADJ.ch].urls.forEach(URL.revokeObjectURL);
+      ST[ADJ.ch].urls = ST[ADJ.ch].files.map(f => URL.createObjectURL(f));
+      mediaHints(ADJ.ch);
+      if (cur === ADJ.ch) chRender(ADJ.ch);
+    }
+    if (ADJ.i < list.length - 1){ ADJ.i++; loadAdjImage(); }     // próxima ou fecha
+    else closeAdjuster();
+  }, "image/jpeg", 0.92);
+}
+
+// arrastar pra reposicionar no modo Cortar
+let adjDrag = null;
+(() => {
+  const cv = $("adjCanvas");
+  cv.addEventListener("pointerdown", e => {
+    if (ADJ.mode !== "crop" || !ADJ.img) return;
+    adjDrag = { x: e.clientX, y: e.clientY, ox: ADJ.ox, oy: ADJ.oy };
+    cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener("pointermove", e => {
+    if (!adjDrag || !ADJ.img) return;
+    const rect = cv.getBoundingClientRect();
+    const W = cv.width, H = cv.height;
+    const cover = Math.max(W / ADJ.img.naturalWidth, H / ADJ.img.naturalHeight);
+    const spanX = ADJ.img.naturalWidth * cover - W, spanY = ADJ.img.naturalHeight * cover - H;
+    if (spanX > 0) ADJ.ox = clamp01(adjDrag.ox - (e.clientX - adjDrag.x) * (W / rect.width) / spanX);
+    if (spanY > 0) ADJ.oy = clamp01(adjDrag.oy - (e.clientY - adjDrag.y) * (H / rect.height) / spanY);
+    drawAdj();
+  });
+  ["pointerup", "pointercancel"].forEach(ev => cv.addEventListener(ev, () => adjDrag = null));
+  $("adjModes").querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
+    ADJ.mode = b.dataset.mode; syncModeBtns(); drawAdj();
+  }));
+  $("adjPrev").addEventListener("click", () => { if (ADJ.i > 0){ ADJ.i--; loadAdjImage(); } });
+  $("adjNext").addEventListener("click", () => {
+    if (ADJ.i < chFileList(ADJ.ch).length - 1){ ADJ.i++; loadAdjImage(); } });
+  $("adjApply").addEventListener("click", applyAdj);
+  $("adjClose").addEventListener("click", closeAdjuster);
+  $("adjModal").addEventListener("click", e => { if (e.target === $("adjModal")) closeAdjuster(); });
+})();
+
+// ── Instagram (código original, + hints de espec. de mídia) ──────────────────
+let files = [];     // File[]
+let urls = [];      // object URLs
+let idx = 0;
+
+function igMediaHints(){
+  const media = CFG.media.instagram || {}, hint = $("imgHint");
+  const warns = [];
+  files.forEach(f => {
+    if (media.image_formats && media.image_formats.length && !media.image_formats.includes(f.type))
+      warns.push(`${f.name}: a Graph API só publica JPEG`);
+    if (media.max_image_bytes && f.size > media.max_image_bytes)
+      warns.push(`${f.name}: ${fmtMB(f.size)} passa de ${fmtMB(media.max_image_bytes)}`);
+  });
+  const done = () => {
+    hint.className = "hint" + (warns.length ? " warn" : "");
+    if (warns.length) hint.textContent = "⚠️ " + warns.join(" · ");
+  };
+  if (urls.length && media.min_ratio && media.max_ratio){
+    const im = new Image();
+    im.onload = () => {
+      const r = im.naturalWidth / im.naturalHeight;
+      if (r < media.min_ratio || r > media.max_ratio)
+        warns.push(`proporção ${r.toFixed(2)} fora de 4:5–1.91:1 (o IG corta/recusa)`);
+      done();
+    };
+    im.onerror = done;
+    im.src = urls[0];
+  } else done();
 }
 
 function render(){
@@ -257,12 +1305,13 @@ $("images").addEventListener("change", (e) => {
   urls = files.map(f => URL.createObjectURL(f));
   idx = 0;
   $("imgHint").textContent = files.length ? `${files.length} imagem(ns) — ordem do carrossel.` : "A ordem dos arquivos é a ordem do carrossel.";
+  igMediaHints();
   render();
 });
 ["caption","collaborators","tagged","location_name","is_posted"].forEach(id =>
   $(id).addEventListener("input", render));
-
-let DRY = true;  // set from /api/config
+$("copy-instagram").addEventListener("click", () => copyAcross("instagram"));
+$("adjust-instagram").addEventListener("click", () => openAdjuster("instagram"));
 
 function validateForm(){
   const res = $("result");
@@ -275,7 +1324,9 @@ async function sendPublish(confirm){
   const btn = $("go"), res = $("result");
   btn.disabled = true; res.className="result"; res.textContent="Enviando…";
   const fd = new FormData();
+  fd.append("channel", "instagram");
   files.forEach(f => fd.append("images", f));
+  if (DERIVED.instagram) fd.append("derived_from", DERIVED.instagram);
   fd.append("caption", $("caption").value);
   fd.append("collaborators", $("collaborators").value);
   fd.append("tagged", $("tagged").value);
@@ -287,7 +1338,7 @@ async function sendPublish(confirm){
 
   try {
     const r = await fetch("/api/publish", { method:"POST", body: fd });
-    const j = await r.json();
+    const j = await respJson(r);
     if(!j.ok){ res.className="result err"; res.textContent="Erro: " + j.error; }
     else {
       const ig = j.instagram || {};
@@ -344,7 +1395,7 @@ async function removePost(shortcode, cell){
   gridMsg("ok", "Removendo…");
   const fd = new FormData(); fd.append("shortcode", shortcode);
   try {
-    const j = await (await fetch("/api/posts/delete", { method:"POST", body: fd })).json();
+    const j = await respJson(await fetch("/api/posts/delete", { method:"POST", body: fd }));
     if(!j.ok){
       if(cell) cell.classList.remove("removing");
       gridMsg("err", "Erro: " + (j.error || "falha ao remover."));
@@ -360,13 +1411,34 @@ async function removePost(shortcode, cell){
   }
 }
 
-// reflect dry-run state in the UI
+// ── bootstrap: config → abas → painéis ──
 fetch("/api/config").then(r=>r.json()).then(c=>{
   DRY = !!c.dry_run;
-  if(c.ig_user && !/^\d+$/.test(c.ig_user)) $("confirmAcct").textContent = c.ig_user;
+  CFG = { channels: c.channels || {}, media: c.media || {} };
+  if(c.ig_user && !/^\d+$/.test(c.ig_user)){ $("confirmAcct").textContent = c.ig_user; $("acct").textContent = c.ig_user; }
   if(DRY){ const h=document.createElement("div"); h.className="hint";
-    h.textContent="Modo DRY-RUN: não posta no Instagram (ideal pra testar local)."; $("go").after(h); }
-}).catch(()=>{});
+    h.textContent="Modo DRY-RUN: não publica em canal nenhum (ideal pra testar local)."; $("go").after(h); }
+  // Relógio do token de APAGAR: aviso só quando importa (inválido ou ≤21 dias).
+  const mt = c.manage_token || {};
+  if (mt.configured && (mt.valid === false || (mt.data_access_days_left ?? 99) <= 21)){
+    $("tokenWarn").style.display = "block";
+    $("tokenWarn").textContent = mt.valid === false
+      ? "⚠️ O token de APAGAR (IG_MANAGE_TOKEN) está inválido — o ✕ da grade vai falhar. " +
+        "Rode: python scripts/refresh_manage_token.py e depois ./deploy.sh."
+      : `⚠️ O acesso a dados do token de APAGAR (IG_MANAGE_TOKEN) expira em ` +
+        `${mt.data_access_days_left} dia(s)${mt.data_access_expires_on ? ` (${mt.data_access_expires_on})` : ""} — ` +
+        "rode python scripts/refresh_manage_token.py e ./deploy.sh antes disso.";
+  }
+  const media = CFG.media.instagram || {};
+  if (media.image_formats && media.image_formats.length)
+    $("images").setAttribute("accept", media.image_formats.join(","));
+  buildUniversalPane();
+  ORDER.filter(k => k !== "universal" && k !== "instagram").forEach(buildPane);
+  buildTabs();
+  setTab("universal");
+}).catch(()=>{ buildUniversalPane();
+  ORDER.filter(k => k !== "universal" && k !== "instagram").forEach(buildPane);
+  buildTabs(); setTab("universal"); });
 
 render();
 loadGrid();

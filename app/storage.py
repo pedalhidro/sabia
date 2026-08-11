@@ -79,6 +79,10 @@ def _gcs_write_text(uri: str, text: str) -> None:
     from google.cloud import storage
 
     bucket_name, key = _split_gs(uri)
-    storage.Client().bucket(bucket_name).blob(key).upload_from_string(
-        text, content_type="text/turtle"
-    )
+    blob = storage.Client().bucket(bucket_name).blob(key)
+    # Bucket público ⇒ sem isso o objeto ganha "public, max-age=3600" e o GCS
+    # serve leituras VELHAS por até 1h — um publish que carrega o grafo em
+    # cache e regrava perderia anúncios gravados nesse meio-tempo. As imagens
+    # (posts/*) podem cachear à vontade (nome único, imutável); o dataset não.
+    blob.cache_control = "no-cache"
+    blob.upload_from_string(text, content_type="text/turtle")

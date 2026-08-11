@@ -11,7 +11,8 @@
 #   ph:Tour  ──ph:hasAnnouncement (1+)──▶  ph:TourAnnouncement
 #                                              ▲
 #                  rdfs:subClassOf  ───────────┤
-#   ph:InstagramPost / ph:WhatsappMessage / ph:RedditPost / ph:SMS / ph:Mastodon
+#   ph:InstagramPost / ph:InstagramReel / ph:WhatsappMessage / ph:RedditPost /
+#   ph:MastodonPost / ph:TelegramMessage / ph:EmailMessage / ph:CalendarEvent
 #
 # Cada canal de divulgação é uma subclasse de ph:TourAnnouncement (NÃO de
 # ph:Tour). Como o SHACL aplica sh:targetClass também às subclasses (entailment
@@ -27,7 +28,7 @@ ph:Tour a rdfs:Class ;
 
 ph:TourAnnouncement a rdfs:Class ;
     rdfs:label "Anúncio de passeio"@pt ;
-    rdfs:comment "A divulgação de um passeio num canal (Instagram, WhatsApp, Reddit, SMS, Mastodon…). Aponta de volta pro passeio via ph:announces."@pt .
+    rdfs:comment "A divulgação de um passeio num canal (Instagram, WhatsApp, Reddit, Mastodon…). Aponta de volta pro passeio via ph:announces."@pt .
 
 ph:Image a rdfs:Class ;
     rdfs:label "Foto"@pt ;
@@ -47,6 +48,27 @@ ph:DeletableInstagramPost a rdfs:Class ;
     rdfs:label "Post removível"@pt ;
     rdfs:comment "Post da app E de baixo engajamento (regra: likeCount<5 E commentCount<2 E viewCount<300; contagem ausente = 0)."@pt .
 
+# Post UNIVERSAL — a matriz do cross-posting. NÃO é um ph:TourAnnouncement
+# (não vive em canal nenhum): é o anúncio-fonte que a app TRANSFORMA num
+# anúncio por canal, do jeito ótimo de cada um. Cada anúncio derivado aponta
+# de volta com prov:wasDerivedFrom.
+#
+# O texto é uma ESCADA de blocos (ph:textBlocks, lista RDF): o bloco N só
+# entra nos canais cujo limite de texto comporta a soma dos blocos 1..N.
+# Os degraus vêm dos limites dos canais (ver ph:UniversalPostShape):
+#   B1 ≤500  → todos (até o Mastodon)     B4 ≤37850 → Reddit e e-mail
+#   B2 ≤524  → todos menos Mastodon       B5 ≤60000 → só e-mail
+#   B3 ≤1126 → WhatsApp/Instagram/Reel/Agenda/Reddit/e-mail
+ph:UniversalPost a rdfs:Class ;
+    rdfs:label "Post universal"@pt ;
+    rdfs:comment "Anúncio-fonte multi-canal: blocos de texto em escada (ph:textBlocks) + até 20 imagens. A app deriva dele um anúncio por canal (texto cortado na escada, imagens recortadas na proporção ideal do canal), ligado por prov:wasDerivedFrom."@pt .
+
+ph:textBlocks a rdf:Property ;
+    rdfs:label "blocos de texto"@pt ;
+    rdfs:comment "Lista RDF ordenada dos blocos de texto do post universal. Concatenação pura (sem separador implícito): a soma dos blocos 1..N precisa caber no canal que recebe o bloco N."@pt ;
+    rdfs:domain ph:UniversalPost ;
+    rdfs:range rdf:List .
+
 # Imagem de ANÚNCIO — a foto que vai num post/mensagem. NÃO é uma ph:Image:
 # vem do Instagram/etc., que remove o EXIF, então não tem (nem precisa de)
 # coordenada ou timestamp original. Por isso é uma classe à parte, livre das
@@ -55,6 +77,10 @@ ph:AnnouncementImage a rdfs:Class ;
     rdfs:label "Imagem de anúncio"@pt ;
     rdfs:comment "Imagem usada num anúncio (post/mensagem). Sem exigência de coordenadas."@pt .
 
+ph:AnnouncementVideo a rdfs:Class ;
+    rdfs:label "Vídeo de anúncio"@pt ;
+    rdfs:comment "Vídeo usado num anúncio (ex.: o vídeo de um Reel). Como a imagem de anúncio: só a URL é obrigatória; tamanho/formato são opcionais e habilitam as checagens de espec. de mídia."@pt .
+
 # Canais de divulgação — cada um é um tipo de anúncio (rdfs:subClassOf
 # ph:TourAnnouncement), então herdam a exigência de apontar pro passeio
 # (ph:announces) e só acrescentam o que é específico do canal.
@@ -62,6 +88,11 @@ ph:InstagramPost a rdfs:Class ;
     rdfs:subClassOf ph:TourAnnouncement ;
     rdfs:label "Post de Instagram"@pt ;
     rdfs:comment "Anúncio de passeio publicado como post no Instagram — acrescenta narrativa, marcações, colaboradoras, local de encontro e fotos."@pt .
+
+ph:InstagramReel a rdfs:Class ;
+    rdfs:subClassOf ph:TourAnnouncement ;
+    rdfs:label "Reel de Instagram"@pt ;
+    rdfs:comment "Anúncio de passeio publicado como Reel (vídeo). A legenda funciona igual à de um post (mesmo campo, hashtags, @menções); o que muda é a mídia: UM vídeo em vez da lista de fotos. NÃO é subclasse de ph:InstagramPost — as shapes divergem."@pt .
 
 ph:WhatsappMessage a rdfs:Class ;
     rdfs:subClassOf ph:TourAnnouncement ;
@@ -73,15 +104,81 @@ ph:RedditPost a rdfs:Class ;
     rdfs:label "Post de Reddit"@pt ;
     rdfs:comment "Anúncio de passeio publicado como post no Reddit."@pt .
 
-ph:SMS a rdfs:Class ;
-    rdfs:subClassOf ph:TourAnnouncement ;
-    rdfs:label "SMS"@pt ;
-    rdfs:comment "Anúncio de passeio divulgado por SMS."@pt .
-
-ph:Mastodon a rdfs:Class ;
+ph:MastodonPost a rdfs:Class ;
     rdfs:subClassOf ph:TourAnnouncement ;
     rdfs:label "Toot de Mastodon"@pt ;
     rdfs:comment "Anúncio de passeio publicado como toot no Mastodon."@pt .
+
+ph:TelegramMessage a rdfs:Class ;
+    rdfs:subClassOf ph:TourAnnouncement ;
+    rdfs:label "Mensagem de Telegram"@pt ;
+    rdfs:comment "Anúncio de passeio divulgado como mensagem num canal/grupo de Telegram."@pt .
+
+ph:EmailMessage a rdfs:Class ;
+    rdfs:subClassOf ph:TourAnnouncement ;
+    rdfs:label "E-mail"@pt ;
+    rdfs:comment "Anúncio de passeio divulgado por e-mail (lista/boletim)."@pt .
+
+ph:CalendarEvent a rdfs:Class ;
+    rdfs:subClassOf ph:TourAnnouncement ;
+    rdfs:label "Evento de agenda"@pt ;
+    rdfs:comment "Anúncio de passeio publicado como evento na Google Agenda do grupo (a mesma que calendario.pedalhidrografi.co exibe ao vivo). Além do título e da descrição, guarda início/fim (schema:startDate/endDate, hora local — o fuso fica na agenda) e o local de encontro (schema:location). Sem mídia: agenda não leva imagem."@pt .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Especificações de mídia por canal (anotações nas shapes)
+#
+# Usadas NAS SHAPES (definitions/shapes.ttl): cada shape de canal declara a
+# proporção ideal, os formatos aceitos e os tamanhos máximos de mídia, e a app
+# lê esses valores pra montar a UI (hints, accept do <input>, checagens).
+#
+# Proporção: decimal = largura ÷ altura (ex.: 4:5 → 0.8; 16:9 → 1.78). min/max
+# delimitam a faixa ACEITA quando a plataforma impõe uma (só o Instagram:
+# fora de 4:5–1.91:1 a API corta ou recusa).
+# ─────────────────────────────────────────────────────────────────────────────
+ph:recommendedAspectRatio a rdf:Property ;
+    rdfs:label "proporção recomendada"@pt ;
+    rdfs:comment "Proporção ideal (largura ÷ altura, decimal) das imagens do canal."@pt ;
+    rdfs:range xsd:decimal .
+
+ph:minAspectRatio a rdf:Property ;
+    rdfs:label "proporção mínima"@pt ;
+    rdfs:comment "Menor proporção (largura ÷ altura) que a plataforma aceita."@pt ;
+    rdfs:range xsd:decimal .
+
+ph:maxAspectRatio a rdf:Property ;
+    rdfs:label "proporção máxima"@pt ;
+    rdfs:comment "Maior proporção (largura ÷ altura) que a plataforma aceita."@pt ;
+    rdfs:range xsd:decimal .
+
+ph:maxImageBytes a rdf:Property ;
+    rdfs:label "tamanho máximo de imagem"@pt ;
+    rdfs:comment "Maior arquivo de imagem (em bytes) que o canal aceita."@pt ;
+    rdfs:range xsd:integer .
+
+ph:maxVideoBytes a rdf:Property ;
+    rdfs:label "tamanho máximo de vídeo"@pt ;
+    rdfs:comment "Maior arquivo de vídeo (em bytes) que o canal aceita. A app ainda só envia imagens — a anotação documenta o canal pro suporte futuro."@pt ;
+    rdfs:range xsd:integer .
+
+ph:acceptedImageFormat a rdf:Property ;
+    rdfs:label "formato de imagem aceito"@pt ;
+    rdfs:comment "Tipo MIME de imagem que o canal aceita (um por valor, ex.: \"image/jpeg\")."@pt ;
+    rdfs:range xsd:string .
+
+ph:acceptedVideoFormat a rdf:Property ;
+    rdfs:label "formato de vídeo aceito"@pt ;
+    rdfs:comment "Tipo MIME de vídeo que o canal aceita (um por valor, ex.: \"video/mp4\")."@pt ;
+    rdfs:range xsd:string .
+
+ph:minVideoSeconds a rdf:Property ;
+    rdfs:label "duração mínima de vídeo"@pt ;
+    rdfs:comment "Menor duração de vídeo (segundos) que o canal aceita."@pt ;
+    rdfs:range xsd:integer .
+
+ph:maxVideoSeconds a rdf:Property ;
+    rdfs:label "duração máxima de vídeo"@pt ;
+    rdfs:comment "Maior duração de vídeo (segundos) que o canal aceita."@pt ;
+    rdfs:range xsd:integer .
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Propriedades de ligação passeio ⇄ anúncio
@@ -99,31 +196,40 @@ ph:announces a rdf:Property ;
     rdfs:range ph:Tour .
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Propriedades introduzidas pelo ph:InstagramPost
+# Propriedades comuns a qualquer anúncio (todos os canais)
 # ─────────────────────────────────────────────────────────────────────────────
 ph:isPosted a rdf:Property ;
     rdfs:label "foi postado"@pt ;
-    rdfs:comment "true = já publicado no Instagram; false = rascunho ainda não publicado."@pt ;
-    rdfs:domain ph:InstagramPost ;
+    rdfs:comment "true = já publicado no canal; false = rascunho ainda não publicado."@pt ;
+    rdfs:domain ph:TourAnnouncement ;
     rdfs:range xsd:boolean .
 
 ph:managedByApp a rdf:Property ;
     rdfs:label "gerenciado pela app"@pt ;
-    rdfs:comment "true = post criado/publicado por ESTA app (e portanto visível/removível na grade). Posts puxados de fora não têm esta marca."@pt ;
-    rdfs:domain ph:InstagramPost ;
+    rdfs:comment "true = anúncio criado/publicado por ESTA app. Posts puxados de fora não têm esta marca."@pt ;
+    rdfs:domain ph:TourAnnouncement ;
     rdfs:range xsd:boolean .
 
+ph:permalink a rdf:Property ;
+    rdfs:label "permalink"@pt ;
+    rdfs:comment "URL pública do anúncio no canal (post no Instagram/Reddit, toot, mensagem de canal do Telegram…)."@pt ;
+    rdfs:domain ph:TourAnnouncement ;
+    rdfs:range xsd:anyURI .
+
+ph:providerMessageId a rdf:Property ;
+    rdfs:label "id no provedor do canal"@pt ;
+    rdfs:comment "Identificador do anúncio no provedor do canal (message id no Telegram/Whapi, status id no Mastodon, event id na Agenda). É o que permite APAGAR depois — a app só remove anúncio publicado há menos de 24h."@pt ;
+    rdfs:domain ph:TourAnnouncement ;
+    rdfs:range xsd:string .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Propriedades introduzidas pelo ph:InstagramPost
+# ─────────────────────────────────────────────────────────────────────────────
 ph:instagramMediaId a rdf:Property ;
     rdfs:label "id da mídia no Instagram"@pt ;
     rdfs:comment "Id numérico da mídia retornado pela Graph API ao publicar (p/ consultar métricas)."@pt ;
     rdfs:domain ph:InstagramPost ;
     rdfs:range xsd:string .
-
-ph:permalink a rdf:Property ;
-    rdfs:label "permalink"@pt ;
-    rdfs:comment "URL pública do post no Instagram."@pt ;
-    rdfs:domain ph:InstagramPost ;
-    rdfs:range xsd:anyURI .
 
 # Métricas de engajamento (preenchidas pela app a partir da Graph API).
 ph:likeCount a rdf:Property ;

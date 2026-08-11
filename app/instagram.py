@@ -95,21 +95,31 @@ def get_metrics(media_id: str) -> dict:
 
 
 def delete_media(media_id: str) -> dict:
-    """Delete a published post via DELETE /{ig-media-id}. Requires the
-    instagram_manage_contents permission. No-op in DRY_RUN.
+    """Delete a published post via DELETE /{ig-media-id}. No-op in DRY_RUN.
+
+    Só funciona no host do Facebook Login (graph.facebook.com) com um token
+    EAA… que tenha `instagram_basic` + `instagram_manage_contents` — é o
+    IG_MANAGE_TOKEN. O token de publicação (IG…, Instagram Login) responde
+    "Unsupported delete request": graph.instagram.com não implementa DELETE.
     """
     if Config.DRY_RUN or not media_id:
         return {"deleted": False, "dry_run": True}
-    # Use the dedicated management token if provided (it carries
-    # instagram_manage_contents and may be a different type than the publish
-    # token); route to the host that matches that token.
+
     token = Config.IG_MANAGE_TOKEN or Config.IG_ACCESS_TOKEN
-    url = f"{_base(token)}/{media_id}?" + urllib.parse.urlencode({"access_token": token})
+    if not token:
+        raise PublishError("IG_MANAGE_TOKEN não definido — sem token não dá pra apagar.")
+    if _base(token) != FB_HOST:
+        raise PublishError(
+            "Apagar exige um token de Facebook Login (EAA…) em IG_MANAGE_TOKEN, com as "
+            "permissões instagram_basic e instagram_manage_contents. O token atual é de "
+            "Instagram Login (IG…), e graph.instagram.com não aceita DELETE."
+        )
+
+    url = f"{FB_HOST}/{media_id}?" + urllib.parse.urlencode({"access_token": token})
     req = urllib.request.Request(url, method="DELETE")
     try:
         with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:
-            json.load(resp)
-        return {"deleted": True, "dry_run": False}
+            body = json.load(resp)
     except urllib.error.HTTPError as exc:
         try:
             err = json.load(exc).get("error", {})
@@ -121,12 +131,19 @@ def delete_media(media_id: str) -> dict:
         # impossível de apagar (o delete falha eternamente na mídia que não existe mais).
         if _is_missing_media(exc.code, err):
             return {"deleted": False, "already_gone": True, "dry_run": False}
-        # Reporta o erro REAL do IG. (Antes cravava "precisa da permissão instagram_manage_contents"
-        # em TODO erro — enganoso: mandava caçar permissão quando era token expirado, Bad signature,
-        # etc. A mensagem do próprio IG já diz o que é.)
+        # Reporta o erro REAL do IG (a mensagem dele já diz o que é). Só o caso
+        # clássico — token expirado, code 190 — ganha a dica acionável.
+        hint = (" — o IG_MANAGE_TOKEN expirou; gere outro e rode ./deploy.sh."
+                if err.get("code") == 190 else "")
         raise PublishError(
-            f"IG delete HTTP {exc.code}: {err.get('message')} (code={err.get('code')})"
+            f"IG delete HTTP {exc.code}: {err.get('message')} (code={err.get('code')}){hint}"
         )
+
+    # 200 não basta: a API responde {"success": true}. QUALQUER outra coisa
+    # (sem a chave, "false" string…) = nada foi apagado, o registro FICA.
+    if body.get("success") is not True:
+        raise PublishError(f"Instagram recusou o DELETE de {media_id}: {body}")
+    return {"deleted": True, "dry_run": False}
 
 
 def _is_missing_media(http_code: int, err: dict) -> bool:
@@ -204,6 +221,40 @@ def publish(
     return {"id": media_id, "permalink": info, "dry_run": False}
 
 
+def publish_reel(video_url: str, caption: str) -> dict:
+    """Publish a Reel: container media_type=REELS → wait → publish.
+
+    A legenda é o MESMO campo caption dos posts (hashtags, @menções — tudo
+    igual); só a mídia muda: um vídeo. O processamento do vídeo é bem mais
+    lento que o de imagem, então a espera é maior (~3 min).
+    Returns {"id", "permalink", "dry_run"}.
+    """
+    user = Config.IG_USER_ID if str(Config.IG_USER_ID).isdigit() else "me"
+    token = Config.IG_ACCESS_TOKEN
+
+    if Config.DRY_RUN:
+        return {
+            "id": "DRYRUN",
+            "permalink": "https://www.instagram.com/reel/DRYRUN/",
+            "dry_run": True,
+        }
+    if not token:
+        raise PublishError("IG_ACCESS_TOKEN not set (and DRY_RUN is off).")
+    if not video_url:
+        raise PublishError("A video is required for a Reel.")
+
+    creation_id = _post(f"{user}/media", {
+        "media_type": "REELS",
+        "video_url": video_url,
+        "caption": caption,
+        "access_token": token,
+    })["id"]
+    _wait_ready(creation_id, token, attempts=60, delay=3.0)
+    result = _post(f"{user}/media_publish", {"creation_id": creation_id, "access_token": token})
+    media_id = result["id"]
+    return {"id": media_id, "permalink": _get_permalink(user, token, media_id), "dry_run": False}
+
+
 def _wait_ready(container_id: str, token: str, attempts: int = 20, delay: float = 2.0) -> None:
     """Poll a media container until its status_code is FINISHED."""
     for _ in range(attempts):
@@ -221,7 +272,7 @@ def _wait_ready(container_id: str, token: str, attempts: int = 20, delay: float 
             raise PublishError("Instagram rejected the media container (status ERROR) — "
                                "usually an unreachable or invalid image URL.")
         time.sleep(delay)
-    raise PublishError("Media container not ready after waiting (~40s). Try again.")
+    raise PublishError(f"Media container not ready after waiting (~{int(attempts * delay)}s). Try again.")
 
 
 def _create_container(user, token, image_url, *, caption=None, is_carousel_item=False,

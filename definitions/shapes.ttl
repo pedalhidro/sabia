@@ -46,10 +46,20 @@ ph:TourAnnouncementShape a sh:NodeShape ;
         sh:maxCount 1 ;
         sh:class ph:Tour ;
         sh:message "Se declarado, ph:announces deve apontar pra um único ph:Tour."@pt ;
+    ] ;
+    sh:property [
+        sh:path ph:providerMessageId ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Se declarado, ph:providerMessageId é UM literal string (id do anúncio no provedor do canal)."@pt ;
     ] .
 
 # Imagem de anúncio — leve, SEM exigência de coordenada/timestamp (o Instagram
-# etc. removem o EXIF). Só precisa apontar pro arquivo/URL da imagem.
+# etc. removem o EXIF). Só precisa apontar pro arquivo/URL da imagem. Tamanho
+# (bytes), formato (MIME) e dimensões (px) são OPCIONAIS — quando declarados,
+# habilitam as checagens de espec. de mídia dos canais (mais abaixo) e precisam
+# ter o datatype certo.
 ph:AnnouncementImageShape a sh:NodeShape ;
     sh:targetClass ph:AnnouncementImage ;
     sh:property [
@@ -59,6 +69,171 @@ ph:AnnouncementImageShape a sh:NodeShape ;
         sh:maxCount 1 ;
         sh:nodeKind sh:IRI ;
         sh:message "Imagem de anúncio precisa de uma URL/arquivo (schema:contentUrl)."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:contentSize ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:message "Se declarado, schema:contentSize é o tamanho em BYTES (inteiro)."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:encodingFormat ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:pattern "^(image|video)/" ;
+        sh:message "Se declarado, schema:encodingFormat é um tipo MIME (ex.: image/jpeg)."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:width ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:message "Se declarada, schema:width é a largura em pixels (inteiro)."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:height ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:message "Se declarada, schema:height é a altura em pixels (inteiro)."@pt ;
+    ] .
+
+# Vídeo de anúncio — mesmo espírito da imagem: só a URL obrigatória; tamanho e
+# formato opcionais (habilitam as checagens de espec. de mídia dos canais).
+ph:AnnouncementVideoShape a sh:NodeShape ;
+    sh:targetClass ph:AnnouncementVideo ;
+    sh:property [
+        sh:path schema:contentUrl ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:message "Vídeo de anúncio precisa de uma URL/arquivo (schema:contentUrl)."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:contentSize ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:message "Se declarado, schema:contentSize é o tamanho em BYTES (inteiro)."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:encodingFormat ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:pattern "^video/" ;
+        sh:message "Se declarado, schema:encodingFormat é um tipo MIME de vídeo (ex.: video/mp4)."@pt ;
+    ] .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UniversalPostShape — a matriz do cross-posting (ver ontology.ttl).
+#
+# O texto é uma ESCADA de blocos: cada degrau é a DIFERENÇA entre limites de
+# texto consecutivos dos canais, então a soma dos blocos 1..N é exatamente o
+# limite do canal do degrau N:
+#   limites: Mastodon 500 | Telegram 1024 | WhatsApp/IG/Reel/Agenda 2150 |
+#            Reddit 40000 | E-mail 100000
+#   degraus: B1 500 | B2 524 | B3 1126 | B4 37850 | B5 60000
+# (o app confere esta aritmética contra a tabela de canais no test_channels.py
+# — mudou limite de canal, esta shape TEM que mudar junto.)
+#
+# Blocos são emendados por concatenação PURA (sem separador): pontuação e
+# quebras de linha entram no fim de cada bloco, dentro do orçamento dele.
+# ─────────────────────────────────────────────────────────────────────────────
+ph:UniversalPostShape a sh:NodeShape ;
+    sh:targetClass ph:UniversalPost ;
+
+    # A lista de blocos: obrigatória, uma só.
+    sh:property [
+        sh:path ph:textBlocks ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Post universal precisa de UMA lista de blocos de texto (ph:textBlocks)."@pt ;
+    ] ;
+    # B1 — todos os canais, até o Mastodon (o menor limite, 500).
+    sh:property [
+        sh:path ( ph:textBlocks rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 500 ;
+        sh:message "Bloco 1 é obrigatório e tem até 500 caracteres (entra em TODOS os canais, até o Mastodon)."@pt ;
+    ] ;
+    # B2 — todos menos Mastodon (soma ≤1024, a legenda do Telegram).
+    sh:property [
+        sh:path ( ph:textBlocks rdf:rest rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:datatype xsd:string ;
+        sh:maxLength 524 ;
+        sh:message "Bloco 2 tem até 524 caracteres (soma 1024 — todos menos Mastodon)."@pt ;
+    ] ;
+    # B3 — WhatsApp/Instagram/Reel/Agenda/Reddit/e-mail (soma ≤2150).
+    sh:property [
+        sh:path ( ph:textBlocks rdf:rest rdf:rest rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:datatype xsd:string ;
+        sh:maxLength 1126 ;
+        sh:message "Bloco 3 tem até 1126 caracteres (soma 2150 — WhatsApp, Instagram, Reel, Agenda, Reddit, e-mail)."@pt ;
+    ] ;
+    # B4 — só Reddit e e-mail (soma ≤40000).
+    sh:property [
+        sh:path ( ph:textBlocks rdf:rest rdf:rest rdf:rest rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:datatype xsd:string ;
+        sh:maxLength 37850 ;
+        sh:message "Bloco 4 tem até 37850 caracteres (soma 40000 — só Reddit e e-mail)."@pt ;
+    ] ;
+    # B5 — só e-mail (soma ≤100000). Depois disso, acabou a escada.
+    sh:property [
+        sh:path ( ph:textBlocks rdf:rest rdf:rest rdf:rest rdf:rest rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:datatype xsd:string ;
+        sh:maxLength 60000 ;
+        sh:message "Bloco 5 tem até 60000 caracteres (soma 100000 — só e-mail)."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( ph:textBlocks rdf:rest rdf:rest rdf:rest rdf:rest rdf:rest rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:maxCount 0 ;
+        sh:message "A escada tem no máximo 5 blocos — nenhum canal comporta um 6º."@pt ;
+    ] ;
+
+    # Título: opcional, ≤255 (o menor entre Reddit 300 e e-mail 255). Sem ele,
+    # a app usa a 1ª linha do bloco 1.
+    sh:property [
+        sh:path dcterms:title ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 255 ;
+        sh:message "Se houver, o título tem até 255 caracteres (limite do assunto de e-mail; Reddit aceita 300)."@pt ;
+    ] ;
+    sh:property [
+        sh:path dcterms:title ;
+        sh:severity sh:Warning ;
+        sh:minCount 1 ;
+        sh:message "Ideal: dar um título (vira título no Reddit e assunto no e-mail; senão a app usa a 1ª linha do bloco 1)."@pt ;
+    ] ;
+
+    # Imagens: até 20 (o teto do Reddit/e-mail), EM ORDEM — cada canal derivado
+    # leva as N primeiras que couberem, recortadas na proporção ideal dele.
+    sh:property [
+        sh:path schema:image ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:message "As imagens devem vir como UMA lista ordenada em schema:image."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:maxCount 20 ;
+        sh:class ph:AnnouncementImage ;
+        sh:node ph:AnnouncementImageShape ;
+        sh:message "Post universal aceita até 20 imagens, cada uma conformando a ph:AnnouncementImageShape."@pt ;
     ] .
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -114,6 +289,16 @@ ph:DeletabilityRule a sh:NodeShape ;
 # ─────────────────────────────────────────────────────────────────────────────
 ph:InstagramPostShape a sh:NodeShape ;
     sh:targetClass ph:InstagramPost ;
+
+    # Espec. de mídia do canal (anotações lidas pela app — ver ontology.ttl).
+    # A Graph API só publica JPEG, até 8 MB, proporção entre 4:5 e 1.91:1
+    # (fora disso corta ou recusa); 4:5 retrato é a maior área no feed.
+    # SEM vídeo no POST de propósito: vídeo é o Reel (ph:InstagramReelShape).
+    ph:recommendedAspectRatio 0.8 ;
+    ph:minAspectRatio 0.8 ;
+    ph:maxAspectRatio 1.91 ;
+    ph:maxImageBytes 8388608 ;
+    ph:acceptedImageFormat "image/jpeg" ;
 
     # (a) Corpo / narrativa — obrigatório, até 1200 caracteres.
     sh:property [
@@ -188,6 +373,103 @@ ph:InstagramPostShape a sh:NodeShape ;
         sh:class ph:AnnouncementImage ;
         sh:node ph:AnnouncementImageShape ;
         sh:message "Post precisa de 1 a 10 imagens na lista, cada uma conformando a ph:AnnouncementImageShape."@pt ;
+    ] ;
+
+    # Espec. de mídia — Avisos que só disparam quando a imagem DECLARA
+    # formato/tamanho (schema:encodingFormat / schema:contentSize).
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first schema:encodingFormat ) ;
+        sh:severity sh:Warning ;
+        sh:in ( "image/jpeg" ) ;
+        sh:message "A Graph API do Instagram só publica JPEG (image/jpeg)."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first schema:contentSize ) ;
+        sh:severity sh:Warning ;
+        sh:maxInclusive 8388608 ;
+        sh:message "Imagem acima de 8 MB — o Instagram recusa."@pt ;
+    ] .
+
+# Proporção — Aviso quando a imagem declara dimensões (schema:width/height) e a
+# razão largura÷altura sai da faixa 4:5 (0.8) … 1.91:1 que a API aceita. Shape
+# separada com sh:severity sh:Warning (a severidade de um sh:sparql vem da
+# shape que o carrega).
+ph:InstagramAspectRatioShape a sh:NodeShape ;
+    sh:targetClass ph:InstagramPost ;
+    sh:severity sh:Warning ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "Imagem fora da faixa de proporção 4:5–1.91:1 do Instagram (a API corta ou recusa)."@pt ;
+        sh:prefixes [
+            sh:declare [ sh:prefix "schema" ; sh:namespace "https://schema.org/"^^xsd:anyURI ] ,
+                       [ sh:prefix "rdf" ; sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ] ,
+                       [ sh:prefix "xsd" ; sh:namespace "http://www.w3.org/2001/XMLSchema#"^^xsd:anyURI ]
+        ] ;
+        sh:select """
+            SELECT $this ?value WHERE {
+                $this schema:image/rdf:rest*/rdf:first ?value .
+                ?value schema:width ?w ; schema:height ?h .
+                FILTER(?h > 0)
+                BIND(xsd:decimal(?w) / ?h AS ?ratio)
+                FILTER(?ratio < 0.8 || ?ratio > 1.91)
+            }
+        """ ;
+    ] .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# InstagramReelShape — anúncio como Reel (vídeo). A legenda funciona IGUAL à
+# do post (mesmo campo schema:articleBody, mesmo limite); o que muda é a
+# mídia: exatamente UM vídeo (schema:video), sem lista de fotos.
+# ─────────────────────────────────────────────────────────────────────────────
+ph:InstagramReelShape a sh:NodeShape ;
+    sh:targetClass ph:InstagramReel ;
+
+    # Espec. de mídia: 9:16 em pé é o formato do Reel (outras proporções são
+    # exibidas com barras); MP4/MOV até 1 GB, de 3 s a 15 min (900 s) pela API.
+    ph:recommendedAspectRatio 0.5625 ;
+    ph:maxVideoBytes 1073741824 ;
+    ph:acceptedVideoFormat "video/mp4", "video/quicktime" ;
+    ph:minVideoSeconds 3 ;
+    ph:maxVideoSeconds 900 ;
+
+    sh:property [
+        sh:path schema:articleBody ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 2150 ;
+        sh:message "Reel precisa de legenda (schema:articleBody), de 1 a 2150 caracteres."@pt ;
+    ] ;
+    sh:property [
+        sh:path ph:isPosted ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean ;
+        sh:defaultValue false ;
+        sh:message "Reel precisa declarar se já foi publicado (ph:isPosted, booleano)."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:video ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:class ph:AnnouncementVideo ;
+        sh:node ph:AnnouncementVideoShape ;
+        sh:message "Reel precisa de exatamente um vídeo (schema:video → ph:AnnouncementVideoShape)."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:video schema:encodingFormat ) ;
+        sh:severity sh:Warning ;
+        sh:in ( "video/mp4" "video/quicktime" ) ;
+        sh:message "Reel aceita MP4 ou MOV."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:video schema:contentSize ) ;
+        sh:severity sh:Warning ;
+        sh:maxInclusive 1073741824 ;
+        sh:message "Vídeo acima de 1 GB — a API do Instagram recusa."@pt ;
     ] .
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -199,6 +481,15 @@ ph:InstagramPostShape a sh:NodeShape ;
 # WhatsApp: mensagem (obrigatória, ≤2150) + foto principal (opcional).
 ph:WhatsappMessageShape a sh:NodeShape ;
     sh:targetClass ph:WhatsappMessage ;
+
+    # Espec. de mídia: preview ~quadrado; imagem JPEG/PNG até 5 MB e vídeo
+    # MP4/3GP até 16 MB (limites do WhatsApp; a app ainda não envia vídeo).
+    ph:recommendedAspectRatio 1.0 ;
+    ph:maxImageBytes 5242880 ;
+    ph:acceptedImageFormat "image/jpeg", "image/png" ;
+    ph:maxVideoBytes 16777216 ;
+    ph:acceptedVideoFormat "video/mp4", "video/3gpp" ;
+
     sh:property [
         sh:path schema:text ;
         sh:severity sh:Violation ;
@@ -215,12 +506,45 @@ ph:WhatsappMessageShape a sh:NodeShape ;
         sh:class ph:AnnouncementImage ;
         sh:node ph:AnnouncementImageShape ;
         sh:message "WhatsApp aceita no máximo uma imagem principal (schema:image → ph:AnnouncementImageShape)."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:image schema:encodingFormat ) ;
+        sh:severity sh:Warning ;
+        sh:in ( "image/jpeg" "image/png" ) ;
+        sh:message "WhatsApp aceita JPEG ou PNG."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:image schema:contentSize ) ;
+        sh:severity sh:Warning ;
+        sh:maxInclusive 5242880 ;
+        sh:message "Imagem acima de 5 MB — o WhatsApp recusa/recomprime."@pt ;
     ] .
 
 # Reddit: título (obrigatório, ≤300 — limite do Reddit) + corpo (opcional,
 # ≤40000) + fotos (opcionais; ordem não declarada como relevante → conjunto).
 ph:RedditPostShape a sh:NodeShape ;
     sh:targetClass ph:RedditPost ;
+
+    # Espec. de mídia: 4:3 é o usual (o feed mostra a imagem inteira, sem
+    # corte); imagem JPEG/PNG/GIF até 20 MB; vídeo MP4/MOV até 1 GB (15 min).
+    ph:recommendedAspectRatio 1.33 ;
+    ph:maxImageBytes 20971520 ;
+    ph:acceptedImageFormat "image/jpeg", "image/png", "image/gif" ;
+    ph:maxVideoBytes 1073741824 ;
+    ph:acceptedVideoFormat "video/mp4", "video/quicktime" ;
+
+    sh:property [
+        sh:path ( schema:image schema:encodingFormat ) ;
+        sh:severity sh:Warning ;
+        sh:in ( "image/jpeg" "image/png" "image/gif" ) ;
+        sh:message "Reddit aceita JPEG, PNG ou GIF."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:image schema:contentSize ) ;
+        sh:severity sh:Warning ;
+        sh:maxInclusive 20971520 ;
+        sh:message "Imagem acima de 20 MB — o Reddit recusa."@pt ;
+    ] ;
     sh:property [
         sh:path dcterms:title ;
         sh:severity sh:Violation ;
@@ -246,23 +570,96 @@ ph:RedditPostShape a sh:NodeShape ;
         sh:message "Cada imagem do Reddit deve conformar a ph:AnnouncementImageShape."@pt ;
     ] .
 
-# SMS: só a mensagem (obrigatória, ≤160 — um segmento SMS em GSM-7).
-ph:SMSShape a sh:NodeShape ;
-    sh:targetClass ph:SMS ;
+# Agenda (Google Calendar): título + início obrigatórios; fim, descrição e
+# local opcionais (mas o fim é ideal). Sem imagens — agenda não leva mídia.
+# Descrição ≤2150 DE PROPÓSITO (igual WhatsApp/IG): não cria degrau novo na
+# escada do post universal.
+ph:CalendarEventShape a sh:NodeShape ;
+    sh:targetClass ph:CalendarEvent ;
     sh:property [
-        sh:path schema:text ;
+        sh:path dcterms:title ;
         sh:severity sh:Violation ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
         sh:datatype xsd:string ;
-        sh:maxLength 160 ;
-        sh:message "SMS precisa de uma mensagem (schema:text), de 1 a 160 caracteres."@pt ;
+        sh:maxLength 255 ;
+        sh:message "Evento de agenda precisa de um título (dcterms:title), de 1 a 255 caracteres."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:startDate ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:dateTime ;
+        sh:message "Evento de agenda precisa de UM início (schema:startDate, xsd:dateTime)."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:endDate ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:dateTime ;
+        sh:message "Se declarado, o fim (schema:endDate) é UM xsd:dateTime."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:endDate ;
+        sh:severity sh:Warning ;
+        sh:minCount 1 ;
+        sh:message "Ideal: declarar o fim do evento (schema:endDate) — a app assume início + 3h."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:description ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 2150 ;
+        sh:message "A descrição do evento (schema:description) tem até 2150 caracteres."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:location ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 255 ;
+        sh:message "Se declarado, o local (schema:location) é texto de até 255 caracteres."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:location ;
+        sh:severity sh:Warning ;
+        sh:minCount 1 ;
+        sh:message "Ideal: dar o local de encontro (schema:location) — é o que a agenda mostra no mapa."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:image ;
+        sh:severity sh:Violation ;
+        sh:maxCount 0 ;
+        sh:message "Evento de agenda não leva imagem (schema:image) — a foto vive nos outros canais."@pt ;
     ] .
 
 # Mastodon: corpo (obrigatório, ≤500 — limite padrão do toot) + fotos
 # (opcionais, ≤4, EM ORDEM → lista RDF, igual ao Instagram).
-ph:MastodonShape a sh:NodeShape ;
-    sh:targetClass ph:Mastodon ;
+ph:MastodonPostShape a sh:NodeShape ;
+    sh:targetClass ph:MastodonPost ;
+
+    # Espec. de mídia (padrões do Mastodon 4.x — a instância pode mudar):
+    # a timeline corta o preview pra 16:9; imagem até 16 MB, vídeo até 99 MB.
+    ph:recommendedAspectRatio 1.78 ;
+    ph:maxImageBytes 16777216 ;
+    ph:acceptedImageFormat "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/avif" ;
+    ph:maxVideoBytes 103809024 ;
+    ph:acceptedVideoFormat "video/mp4", "video/webm", "video/quicktime" ;
+
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first schema:encodingFormat ) ;
+        sh:severity sh:Warning ;
+        sh:in ( "image/jpeg" "image/png" "image/gif" "image/webp" "image/heic" "image/avif" ) ;
+        sh:message "Formato de imagem que o Mastodon (padrão) não aceita."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first schema:contentSize ) ;
+        sh:severity sh:Warning ;
+        sh:maxInclusive 16777216 ;
+        sh:message "Imagem acima de 16 MB — padrão do Mastodon recusa."@pt ;
+    ] ;
     sh:property [
         sh:path schema:articleBody ;
         sh:severity sh:Violation ;
@@ -285,4 +682,100 @@ ph:MastodonShape a sh:NodeShape ;
         sh:class ph:AnnouncementImage ;
         sh:node ph:AnnouncementImageShape ;
         sh:message "Toot aceita no máximo 4 imagens, em ordem, cada uma conformando a ph:AnnouncementImageShape."@pt ;
+    ] .
+
+# Telegram: texto (obrigatório; ≤1024 — limite de legenda quando a mensagem
+# leva mídia, o caso comum aqui) + fotos (opcionais, ≤10 — um media group —
+# EM ORDEM → lista RDF, igual ao Instagram).
+ph:TelegramMessageShape a sh:NodeShape ;
+    sh:targetClass ph:TelegramMessage ;
+
+    # Espec. de mídia: 16:9 é o usual em canais; enviando por URL a Bot API
+    # baixa fotos até 5 MB (JPEG/PNG — fotos são recomprimidas pra JPEG) e
+    # vídeo MP4 até 20 MB.
+    ph:recommendedAspectRatio 1.78 ;
+    ph:maxImageBytes 5242880 ;
+    ph:acceptedImageFormat "image/jpeg", "image/png" ;
+    ph:maxVideoBytes 20971520 ;
+    ph:acceptedVideoFormat "video/mp4" ;
+
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first schema:encodingFormat ) ;
+        sh:severity sh:Warning ;
+        sh:in ( "image/jpeg" "image/png" ) ;
+        sh:message "Telegram aceita JPEG ou PNG (fotos viram JPEG)."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first schema:contentSize ) ;
+        sh:severity sh:Warning ;
+        sh:maxInclusive 5242880 ;
+        sh:message "Foto acima de 5 MB — a Bot API não baixa por URL."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:text ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 1024 ;
+        sh:message "Mensagem de Telegram precisa de texto (schema:text), de 1 a 1024 caracteres (limite de legenda com mídia)."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:image ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:message "As fotos devem vir como UMA lista ordenada em schema:image — ex.: schema:image ( ph:img1 ph:img2 )."@pt ;
+    ] ;
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:maxCount 10 ;
+        sh:class ph:AnnouncementImage ;
+        sh:node ph:AnnouncementImageShape ;
+        sh:message "Telegram aceita no máximo 10 imagens (um media group), em ordem, cada uma conformando a ph:AnnouncementImageShape."@pt ;
+    ] .
+
+# E-mail: assunto (obrigatório, ≤255) + corpo (obrigatório, sem limite prático
+# → ≤100000 de guarda) + imagens embutidas/anexas (opcionais; ordem não
+# declarada como relevante → conjunto, igual ao Reddit).
+ph:EmailMessageShape a sh:NodeShape ;
+    sh:targetClass ph:EmailMessage ;
+
+    # Espec. de mídia: layout livre (sem proporção recomendada); o limite real
+    # é o total de anexos que os provedores entregam (~25 MB, regra do Gmail).
+    ph:maxImageBytes 26214400 ;
+    ph:acceptedImageFormat "image/jpeg", "image/png", "image/gif" ;
+    ph:maxVideoBytes 26214400 ;
+    ph:acceptedVideoFormat "video/mp4" ;
+
+    sh:property [
+        sh:path ( schema:image schema:contentSize ) ;
+        sh:severity sh:Warning ;
+        sh:maxInclusive 26214400 ;
+        sh:message "Anexo acima de ~25 MB — provedores de e-mail devolvem."@pt ;
+    ] ;
+    sh:property [
+        sh:path dcterms:title ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 255 ;
+        sh:message "E-mail precisa de assunto (dcterms:title), de 1 a 255 caracteres."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:articleBody ;
+        sh:severity sh:Violation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 100000 ;
+        sh:message "E-mail precisa de corpo (schema:articleBody), de 1 a 100000 caracteres."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:image ;
+        sh:severity sh:Violation ;
+        sh:class ph:AnnouncementImage ;
+        sh:node ph:AnnouncementImageShape ;
+        sh:message "Cada imagem do e-mail deve conformar a ph:AnnouncementImageShape."@pt ;
     ] .
