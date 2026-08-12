@@ -1,9 +1,12 @@
-"""Sugestão de texto alternativo (alt) por IA — Claude Haiku.
+"""Sugestão de texto alternativo (alt) por IA — Claude Opus 5, com thinking.
 
 A UI manda uma versão REDUZIDA da imagem (≤512px, JPEG — o navegador encolhe
-no canvas antes de subir), o que mantém o custo em ~US$ 0,001/imagem no Haiku
-(tokens de imagem ≈ largura×altura/750). A sugestão preenche o campo Alt e
-continua editável — a pessoa revisa antes de publicar.
+no canvas antes de subir). No Opus 5 o thinking vem ligado por padrão: o
+modelo olha a imagem com calma antes de escrever — o "carinho" custa
+~US$ 0,01/imagem (tokens de imagem ≈ largura×altura/750 + o pensamento).
+A sugestão preenche o campo Alt e continua editável — a pessoa revisa antes
+de publicar. Pra economizar, MODEL = "claude-haiku-4-5" (~US$0,001/imagem);
+pro máximo, "claude-fable-5" (thinking sempre ligado, ~US$0,02).
 
 Provider é detalhe de implementação: troque suggest_alt() e o resto da app
 não muda. Precisa de ANTHROPIC_API_KEY (Secret Manager em produção, .env
@@ -15,7 +18,8 @@ import base64
 
 from config import Config
 
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-opus-5"
+MODEL_LABEL = "Claude Opus 5"
 PROMPT = (
     "Escreva o texto alternativo (alt) desta imagem em português, para "
     "leitores de tela: uma frase objetiva de 5 a 25 palavras. É a imagem de "
@@ -44,7 +48,9 @@ def suggest_alt(data: bytes, mime: str = "image/jpeg", context: str = "") -> str
     client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
     response = client.messages.create(
         model=MODEL,
-        max_tokens=200,
+        # max_tokens cobre PENSAMENTO + resposta (no Opus 5 o thinking é
+        # padrão e conta aqui) — apertado demais truncaria a frase final.
+        max_tokens=3000,
         messages=[{
             "role": "user",
             "content": [
@@ -55,8 +61,12 @@ def suggest_alt(data: bytes, mime: str = "image/jpeg", context: str = "") -> str
             ],
         }],
     )
+    # Opus 5/Fable têm classificadores que podem recusar (stop_reason em vez
+    # de erro HTTP) — improvável em foto de pedal, mas checa antes de ler.
+    if response.stop_reason == "refusal":
+        raise RuntimeError("o modelo recusou descrever esta imagem")
     text = next((b.text for b in response.content if b.type == "text"), "")
     text = text.strip().strip('"').strip()
     # Transparência: alt gerado por IA leva o crédito — no código, não no
     # prompt, pra sair SEMPRE (a pessoa pode apagar ao editar, se quiser).
-    return f"{text} (gerado por Claude Haiku 4.5)" if text else text
+    return f"{text} (gerado por {MODEL_LABEL})" if text else text

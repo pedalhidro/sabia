@@ -19,8 +19,8 @@ canal, cada uma com **preview ao vivo**, limites e validação próprios:
 **obrigatório no Mastodon** (Violação; regra do ursal.zone — vai no
 `description` do upload de mídia). No Reddit o alt entra no texto do link da
 foto. Com `ANTHROPIC_API_KEY` configurada, o botão ✨ sugere o alt via Claude
-Haiku (~US$0,001/imagem; a sugestão sai com "(gerado por Claude Haiku 4.5)"
-e fica editável).
+Opus 5 com thinking (~US$0,01/imagem; a sugestão sai com o crédito do modelo
+e fica editável — modelo trocável em `alt_ai.MODEL`).
 
 ## O post universal (🌐, a primeira aba)
 
