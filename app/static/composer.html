@@ -11,12 +11,18 @@
          background:var(--bg); color:#262626; }
   .page { max-width:1100px; margin:24px auto; padding:0 16px; }
   .wrap { display:grid; grid-template-columns: 1fr 460px; gap:32px; }
+  /* Filhos de grid têm min-width:auto — o conteúdo (tabela do plano na aba
+     universal, textareas da escada) força a coluna além da viewport no
+     Firefox. min-width:0 deixa a coluna encolher; o que passar, quebra/rola
+     dentro dela em vez de estourar a página. */
+  .wrap > * { min-width: 0; }
   @media (max-width:880px){ .wrap{ grid-template-columns:1fr; } }
   h1 { font-size:20px; margin:0 0 10px; }
   .intro { font-size:13px; color:#444; background:#f0f6ff; border:1px solid #d6e4ff; border-radius:8px;
            padding:10px 12px; margin:0 0 14px; line-height:1.5; }
   label { display:block; font-weight:600; font-size:13px; margin:14px 0 6px; }
-  textarea, input[type=text] { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px;
+  input[type=file] { width:100%; max-width:100%; }  /* Firefox: largura intrínseca grande, não encolhe sozinho */
+  textarea, input[type=text] { width:100%; max-width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px;
          font:inherit; background:#fff; }
   textarea { min-height:120px; resize:vertical; }
   .row { display:flex; gap:10px; }
@@ -956,7 +962,7 @@ function chRender(k){
     }).join("");
     html = `<div class="pv"><div class="pbody" style="padding:14px">
       <b>🌐 Plano de derivação</b>
-      <table style="width:100%;font-size:13px;border-collapse:collapse;margin-top:8px">
+      <table style="width:100%;table-layout:fixed;overflow-wrap:anywhere;font-size:13px;border-collapse:collapse;margin-top:8px">
         <tr style="color:var(--muted)"><td>canal</td><td>texto</td><td>mídia</td></tr>${rows}</table>
       <div class="hint" style="margin-top:8px">O bloco N entra só nos canais em que a soma
         dos blocos 1..N cabe; as imagens saem recortadas na proporção ⭐ de cada canal.</div>
