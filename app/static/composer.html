@@ -1260,12 +1260,18 @@ function updateAdjMulti(){
        : "");
   host.appendChild(label);
   const src = $("adjCanvas");
+  // Bitmap na densidade real da tela (senão fica borrado em telas HiDPI) e
+  // exibido em altura CSS fixa — o navegador só REDUZ, nunca amplia.
+  const PH = 120, dpr = Math.min(window.devicePixelRatio || 1, 3);
   adjRatioGroups().forEach(gr => {
     const r = gr.ratio || (src.width / src.height);   // sem ⭐ (e-mail) = original
     const cv = document.createElement("canvas");
-    cv.height = 72;
-    cv.width = Math.max(24, Math.round(72 * r));
+    cv.height = Math.round(PH * dpr);
+    cv.width = Math.max(24, Math.round(cv.height * r));
+    cv.style.height = PH + "px";
+    cv.style.width = Math.round(cv.width / dpr) + "px";
     const ctx = cv.getContext("2d");
+    ctx.imageSmoothingQuality = "high";
     const cover = Math.max(cv.width / src.width, cv.height / src.height);
     const dw = src.width * cover, dh = src.height * cover;
     ctx.drawImage(src, (cv.width - dw) / 2, (cv.height - dh) / 2, dw, dh);
