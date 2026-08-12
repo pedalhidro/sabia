@@ -312,6 +312,13 @@
         <span id="adjRotVal" style="min-width:4ch;text-align:right">0°</span></label>
       <button class="mbtn" id="adjRotReset" title="zerar a rotação">↺ 0°</button>
     </div>
+    <div class="mrow">
+      <label style="display:flex;align-items:center;gap:6px;flex:1"
+             title="só no modo Cortar — aproxima o recorte (cada proporção lembra o seu)">🔍 Zoom
+        <input type="range" id="adjZoom" min="1" max="3" step="0.01" value="1" style="flex:1">
+        <span id="adjZoomVal" style="min-width:5ch;text-align:right">1.00×</span></label>
+      <button class="mbtn" id="adjZoomReset" title="voltar pro zoom mínimo">1×</button>
+    </div>
     <div class="mcanvas"><canvas id="adjCanvas"></canvas></div>
     <div class="mrow" id="adjMulti" style="display:none"></div>
     <div class="hint" id="adjHint">No modo Cortar, arraste a imagem pra enquadrar. ⭐ = proporção ideal do canal.</div>
@@ -476,17 +483,9 @@ function buildUniversalPane(){
 
   $("f-universal-title").addEventListener("input", uniUpdate);
   ladder.forEach((_, i) => $(`f-universal-b${i + 1}`).addEventListener("input", uniUpdate));
-  $("f-universal-images").addEventListener("change", e => {
-    UNI.urls.forEach(URL.revokeObjectURL);
-    UNI.files = Array.from(e.target.files).slice(0, 20);
-    UNI.urls = UNI.files.map(f => URL.createObjectURL(f));
-    UNI.alts = UNI.files.map(() => "");
-    UNI.cropHints = [];   // imagens novas = enquadramentos zerados
-    renderAlts("universal");
-    $("f-universal-imghint").textContent =
-      `${UNI.files.length} imagem(ns) — recortadas por canal ao derivar.`;
-    uniUpdate();
-  });
+  // acrescenta à lista (não substitui); ✕/▲▼ de cada linha removem e ordenam
+  $("f-universal-images").addEventListener("change", e =>
+    imgAppend("universal", e.target, 20));
   $("adjust-universal").addEventListener("click", () => openAdjuster("universal"));
   $("f-universal-go").addEventListener("click", deriveUniversal);
 }
@@ -529,7 +528,7 @@ function cropToRatio(file, ratio, hint){
       const ctx = cv.getContext("2d");
       const off = (hint && hint.offs && hint.offs[rk(ratio)]) || { ox: 0.5, oy: 0.5 };
       drawCover(ctx, img, img.naturalWidth, img.naturalHeight, W, H,
-                off.ox, off.oy, (hint && hint.rot) || 0);
+                off.ox, off.oy, (hint && hint.rot) || 0, off.z || 1);
       cv.toBlob(b => res(b
         ? new File([b], file.name.replace(/\.[^.]+$/, "")
                    + (ratio ? `-${ratioLabel(ratio).replace(":", "x")}` : "") + ".jpg",
@@ -701,12 +700,15 @@ function wirePane(k){
   posted.addEventListener("input", () => chUpdate(k));
   const imgs = $(`f-${k}-images`);
   if (imgs) imgs.addEventListener("change", e => {
-    ST[k].urls.forEach(URL.revokeObjectURL);
-    ST[k].files = Array.from(e.target.files).slice(0, c.maxImages);
-    ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
-    ST[k].alts = ST[k].files.map(() => "");
-    if (c.video) videoHints(k); else { mediaHints(k); renderAlts(k); }
-    chUpdate(k);
+    if (c.video){   // vídeo: 1 por vez — escolher outro SUBSTITUI
+      ST[k].urls.forEach(URL.revokeObjectURL);
+      ST[k].files = Array.from(e.target.files).slice(0, c.maxImages);
+      ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
+      ST[k].alts = ST[k].files.map(() => "");
+      videoHints(k); chUpdate(k);
+      return;
+    }
+    imgAppend(k, e.target, c.maxImages);  // imagens: acrescenta à lista
   });
   const adj = $(`adjust-${k}`);
   if (adj) adj.addEventListener("click", () => openAdjuster(k));
@@ -1086,7 +1088,22 @@ function chRender(k){
 // recorte que o "sobre o recorte" do preencher/esticar reaproveita);
 // rot = rotação em graus (entra em todos os modos e no derivar).
 const ADJ = { ch: null, i: 0, img: null, mode: "crop", ratio: 1, ox: 0.5, oy: 0.5,
-              rot: 0, offs: {}, cropRatio: 0, useCrop: false };
+              rot: 0, zoom: 1, offs: {}, cropRatio: 0, useCrop: false };
+
+// slider ↔ estado (rotação e zoom) — chamar sempre que ADJ.rot/zoom mudar
+function syncAdjSliders(){
+  $("adjRot").value = ADJ.rot; $("adjRotVal").textContent = ADJ.rot + "°";
+  $("adjZoom").value = ADJ.zoom; $("adjZoomVal").textContent = ADJ.zoom.toFixed(2) + "×";
+}
+
+// o enquadramento da proporção atual, como fica salvo em offs/cropHints
+function curOff(){ return { ox: ADJ.ox, oy: ADJ.oy, z: ADJ.zoom }; }
+function loadOff(off){
+  ADJ.ox = off && off.ox != null ? off.ox : 0.5;
+  ADJ.oy = off && off.oy != null ? off.oy : 0.5;
+  ADJ.zoom = (off && off.z) || 1;
+  syncAdjSliders();
+}
 
 // chave estável de uma proporção (0/ausente = "original")
 const rk = r => r ? r.toFixed(4) : "orig";
@@ -1095,16 +1112,16 @@ const rk = r => r ? r.toFixed(4) : "orig";
 // imagem girada em deg, ela precisa cobrir (no referencial DELA) a caixa do
 // retângulo girado ao contrário — W·|cos|+H·|sin| por W·|sin|+H·|cos|.
 // sx/sy = folga de arrasto (quanto sobra pra deslocar o enquadramento).
-function coverGeom(sw, sh, W, H, deg){
+function coverGeom(sw, sh, W, H, deg, zoom){
   const rad = deg * Math.PI / 180;
   const c = Math.abs(Math.cos(rad)), s = Math.abs(Math.sin(rad));
   const needW = W * c + H * s, needH = W * s + H * c;
-  const cover = Math.max(needW / sw, needH / sh);
+  const cover = Math.max(needW / sw, needH / sh) * (zoom || 1);
   return { rad, cover, sx: sw * cover - needW, sy: sh * cover - needH };
 }
 
-function drawCover(ctx, src, sw, sh, W, H, ox, oy, deg){
-  const g = coverGeom(sw, sh, W, H, deg);
+function drawCover(ctx, src, sw, sh, W, H, ox, oy, deg, zoom){
+  const g = coverGeom(sw, sh, W, H, deg, zoom);
   const dw = sw * g.cover, dh = sh * g.cover;
   ctx.save();
   ctx.translate(W / 2, H / 2); ctx.rotate(g.rad);
@@ -1133,7 +1150,7 @@ function cropSource(){
   cv.width = 1080; cv.height = Math.round(1080 / r);
   const off = ADJ.offs[rk(ADJ.cropRatio)] || { ox: 0.5, oy: 0.5 };
   drawCover(cv.getContext("2d"), img, img.naturalWidth, img.naturalHeight,
-            cv.width, cv.height, off.ox, off.oy, ADJ.rot);
+            cv.width, cv.height, off.ox, off.oy, ADJ.rot, off.z || 1);
   return cv;
 }
 const RATIO_PRESETS = [["9:16", 0.5625], ["4:5", 0.8], ["1:1", 1], ["4:3", 4/3],
@@ -1152,6 +1169,70 @@ function chAltList(ch){
   return ST[ch] ? ST[ch].alts : [];
 }
 
+function chUrlList(ch){
+  if (ch === "instagram") return urls;
+  if (ch === "universal") return UNI.urls;
+  return ST[ch] ? ST[ch].urls : [];
+}
+
+// ── remover/reordenar imagens já escolhidas (antes de publicar) ──────────────
+// Tudo em splice/swap NO LUGAR: files/urls/alts (e cropHints na universal)
+// são referências vivas — reatribuir quebraria o resto do estado.
+function imgArrays(k){
+  if (k === "instagram") return [files, urls, igAlts, null];
+  if (k === "universal") return [UNI.files, UNI.urls, UNI.alts, UNI.cropHints];
+  return [ST[k].files, ST[k].urls, ST[k].alts, null];
+}
+
+function imgRefresh(k){
+  if (k === "instagram"){
+    $("imgHint").textContent = files.length
+      ? `${files.length} imagem(ns) — ordem do carrossel.`
+      : "A ordem dos arquivos é a ordem do carrossel.";
+    igMediaHints(); render();
+  }
+  else if (k === "universal"){
+    $("f-universal-imghint").textContent =
+      `${UNI.files.length} imagem(ns) — recortadas por canal ao derivar.`;
+    uniUpdate();
+    if (cur === "universal") chRender("universal");
+  } else {
+    mediaHints(k); chUpdate(k);
+  }
+  renderAlts(k);
+}
+
+function imgRemove(k, i){
+  const [fs, us, as, hints] = imgArrays(k);
+  URL.revokeObjectURL(us[i]);
+  fs.splice(i, 1); us.splice(i, 1); as.splice(i, 1);
+  if (hints) hints.splice(i, 1);
+  imgRefresh(k);
+}
+
+function imgMove(k, i, d){
+  const [fs, us, as, hints] = imgArrays(k);
+  const j = i + d;
+  if (j < 0 || j >= fs.length) return;
+  [fs[i], fs[j]] = [fs[j], fs[i]];
+  [us[i], us[j]] = [us[j], us[i]];
+  [as[i], as[j]] = [as[j], as[i]];
+  if (hints) [hints[i], hints[j]] = [hints[j], hints[i]];
+  imgRefresh(k);
+}
+
+// Browse ACRESCENTA à lista (não substitui) — remover é o ✕ de cada linha.
+// Devolve quantas entraram; zera o input pra re-escolher o mesmo arquivo.
+function imgAppend(k, input, cap){
+  const [fs, us, as] = imgArrays(k);
+  const room = Math.max(0, cap - fs.length);
+  const add = Array.from(input.files).slice(0, room);
+  add.forEach(f => { fs.push(f); us.push(URL.createObjectURL(f)); as.push(""); });
+  input.value = "";
+  imgRefresh(k);
+  return add.length;
+}
+
 // Inputs de texto alternativo, um por imagem selecionada. Digite na aba
 // universal e o derivar/copiar leva junto. No Mastodon é obrigatório
 // (ursal.zone); nos demais é o ideal (Warning do SHACL). O ✨ pede uma
@@ -1163,14 +1244,32 @@ function renderAlts(k){
   if (!fileList.length){ host.innerHTML = ""; return; }
   const need = k === "mastodon";
   const ALT_MAX = 500;   // espelha ttl_store.MAX_ALT_CHARS / shape SHACL
+  const urlList = chUrlList(k);
   host.innerHTML = fileList.map((f, i) => `
-    <label style="font-size:12px">Alt da imagem ${i + 1}${need ? " (obrigatório)" : ""}
-      <span class="count" data-altcount="${i}">${(altList[i] || "").length} / ${ALT_MAX}</span></label>
-    <div style="display:flex;gap:6px;align-items:flex-start">
-      <textarea class="altin" data-i="${i}" maxlength="${ALT_MAX}" rows="2" style="flex:1"
-                placeholder="descreva a foto pra quem usa leitor de tela">${escapeHtml(altList[i] || "")}</textarea>
-      ${CFG.alt_ai ? `<button class="altai" data-i="${i}" title="sugerir com IA">✨</button>` : ""}
+    <div style="display:flex;gap:8px;align-items:flex-start;margin:8px 0">
+      <img src="${urlList[i] || ""}" alt=""
+           style="width:56px;height:56px;object-fit:cover;border-radius:6px;flex:none">
+      <div style="flex:1;min-width:0">
+        <label style="font-size:12px">Alt da imagem ${i + 1}${need ? " (obrigatório)" : ""}
+          <span class="count" data-altcount="${i}">${(altList[i] || "").length} / ${ALT_MAX}</span></label>
+        <div style="display:flex;gap:6px;align-items:flex-start">
+          <textarea class="altin" data-i="${i}" maxlength="${ALT_MAX}" rows="2" style="flex:1"
+                    placeholder="descreva a foto pra quem usa leitor de tela">${escapeHtml(altList[i] || "")}</textarea>
+          ${CFG.alt_ai ? `<button class="altai" data-i="${i}" title="sugerir com IA">✨</button>` : ""}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;flex:none">
+        <button class="mbtn imgmv" data-i="${i}" data-d="-1" title="mover pra cima"
+                ${i === 0 ? "disabled" : ""}>▲</button>
+        <button class="mbtn imgmv" data-i="${i}" data-d="1" title="mover pra baixo"
+                ${i === fileList.length - 1 ? "disabled" : ""}>▼</button>
+        <button class="mbtn imgrm" data-i="${i}" title="remover esta imagem">✕</button>
+      </div>
     </div>`).join("");
+  host.querySelectorAll(".imgmv").forEach(b => b.addEventListener("click", () =>
+    imgMove(k, +b.dataset.i, +b.dataset.d)));
+  host.querySelectorAll(".imgrm").forEach(b => b.addEventListener("click", () =>
+    imgRemove(k, +b.dataset.i)));
   host.querySelectorAll(".altin").forEach(inp => inp.addEventListener("input", () => {
     const i = Number(inp.dataset.i);
     altList[i] = inp.value;
@@ -1265,13 +1364,12 @@ function buildRatioChips(media){
     return `<button class="mbtn ratio ${Math.abs(r - ADJ.ratio) < 1e-3 ? "on" : ""}" data-r="${r}">${lab}${star}</button>`;
   }).join("");
   $("adjRatios").querySelectorAll(".ratio").forEach(b => b.addEventListener("click", () => {
-    // no Cortar cada proporção lembra o próprio enquadramento
-    if (ADJ.mode === "crop") ADJ.offs[rk(ADJ.ratio)] = { ox: ADJ.ox, oy: ADJ.oy };
+    // no Cortar cada proporção lembra o próprio enquadramento (offset + zoom)
+    if (ADJ.mode === "crop") ADJ.offs[rk(ADJ.ratio)] = curOff();
     ADJ.ratio = parseFloat(b.dataset.r);
     if (ADJ.mode === "crop"){
       ADJ.cropRatio = ADJ.ratio;
-      const off = ADJ.offs[rk(ADJ.ratio)] || { ox: 0.5, oy: 0.5 };
-      ADJ.ox = off.ox; ADJ.oy = off.oy;
+      loadOff(ADJ.offs[rk(ADJ.ratio)]);
     }
     $("adjRatios").querySelectorAll(".ratio").forEach(x => x.classList.toggle("on", x === b));
     drawAdj();
@@ -1282,6 +1380,8 @@ function syncModeBtns(){
   $("adjModes").querySelectorAll("[data-mode]").forEach(b =>
     b.classList.toggle("on", b.dataset.mode === ADJ.mode));
   $("adjUseCropWrap").style.display = ADJ.mode === "crop" ? "none" : "flex";
+  // zoom só age no recorte (e no derivar) — fora do Cortar fica apagado
+  $("adjZoom").disabled = $("adjZoomReset").disabled = ADJ.mode !== "crop";
   const uniCrop = ADJ.ch === "universal" && ADJ.mode === "crop";
   $("adjApply").textContent = uniCrop ? "Salvar recortes desta imagem" : "Aplicar nesta imagem";
   $("adjHint").textContent = uniCrop
@@ -1293,16 +1393,16 @@ function loadAdjImage(){
   const list = chFileList(ADJ.ch);
   ADJ.i = Math.max(0, Math.min(ADJ.i, list.length - 1));
   $("adjCounter").textContent = `(${ADJ.i + 1}/${list.length})`;
-  ADJ.ox = ADJ.oy = 0.5; ADJ.rot = 0; ADJ.offs = {};
+  ADJ.ox = ADJ.oy = 0.5; ADJ.rot = 0; ADJ.zoom = 1; ADJ.offs = {};
   // universal: recarrega o enquadramento salvo desta imagem (se houver)
   const hint = ADJ.ch === "universal" ? UNI.cropHints[ADJ.i] : null;
   if (hint){
     ADJ.offs = JSON.parse(JSON.stringify(hint.offs || {}));
     ADJ.rot = hint.rot || 0;
     const off = ADJ.offs[rk(ADJ.ratio)];
-    if (off){ ADJ.ox = off.ox; ADJ.oy = off.oy; }
+    if (off){ ADJ.ox = off.ox; ADJ.oy = off.oy; ADJ.zoom = off.z || 1; }
   }
-  $("adjRot").value = ADJ.rot; $("adjRotVal").textContent = ADJ.rot + "°";
+  syncAdjSliders();
   const img = new Image();
   img.onload = () => { URL.revokeObjectURL(img.src); ADJ.img = img; drawAdj(); };
   img.src = URL.createObjectURL(list[ADJ.i]);
@@ -1340,7 +1440,7 @@ function drawAdj(){
     ctx.fillRect(0, 0, W, H);
     drawContain(ctx, src, sw, sh, W, H, rot);   // frente: contain
   } else {                                      // crop: cover com offset arrastável
-    drawCover(ctx, src, sw, sh, W, H, ADJ.ox, ADJ.oy, ADJ.rot);
+    drawCover(ctx, src, sw, sh, W, H, ADJ.ox, ADJ.oy, ADJ.rot, ADJ.zoom);
   }
   updateAdjMulti();
 }
@@ -1395,7 +1495,7 @@ function updateAdjMulti(){
       // esta proporção (o chip ativo mostra o arrasto ao vivo)
       const off = ADJ.offs[rk(gr.ratio)] || { ox: 0.5, oy: 0.5 };
       drawCover(ctx, ADJ.img, ADJ.img.naturalWidth, ADJ.img.naturalHeight,
-                cv.width, cv.height, off.ox, off.oy, ADJ.rot);
+                cv.width, cv.height, off.ox, off.oy, ADJ.rot, off.z || 1);
     } else {
       // preencher/esticar viram o arquivo — o derivar recorta o RESULTADO
       drawCover(ctx, src, src.width, src.height, cv.width, cv.height, 0.5, 0.5, 0);
@@ -1419,7 +1519,7 @@ function applyAdj(){
   // Universal + Cortar: NÃO gera arquivo — salva o enquadramento por proporção
   // e o Derivar recorta cada canal com ele (a matriz publica a original).
   if (ADJ.ch === "universal" && ADJ.mode === "crop"){
-    ADJ.offs[rk(ADJ.ratio)] = { ox: ADJ.ox, oy: ADJ.oy };
+    ADJ.offs[rk(ADJ.ratio)] = curOff();
     UNI.cropHints[ADJ.i] = { offs: { ...ADJ.offs }, rot: ADJ.rot };
     const res = $("f-universal-result");
     res.className = "result ok";
@@ -1468,7 +1568,7 @@ let adjDrag = null;
     if (!adjDrag || !ADJ.img) return;
     const rect = cv.getBoundingClientRect();
     const W = cv.width, H = cv.height;
-    const g = coverGeom(ADJ.img.naturalWidth, ADJ.img.naturalHeight, W, H, ADJ.rot);
+    const g = coverGeom(ADJ.img.naturalWidth, ADJ.img.naturalHeight, W, H, ADJ.rot, ADJ.zoom);
     // delta do dedo em px do canvas, levado pro referencial da imagem girada
     const dx = (e.clientX - adjDrag.x) * (W / rect.width);
     const dy = (e.clientY - adjDrag.y) * (H / rect.height);
@@ -1476,7 +1576,7 @@ let adjDrag = null;
     const dyi = -dx * Math.sin(g.rad) + dy * Math.cos(g.rad);
     if (g.sx > 0) ADJ.ox = clamp01(adjDrag.ox - dxi / g.sx);
     if (g.sy > 0) ADJ.oy = clamp01(adjDrag.oy - dyi / g.sy);
-    ADJ.offs[rk(ADJ.ratio)] = { ox: ADJ.ox, oy: ADJ.oy };
+    ADJ.offs[rk(ADJ.ratio)] = curOff();
     drawAdj();
   });
   ["pointerup", "pointercancel"].forEach(ev => cv.addEventListener(ev, () => adjDrag = null));
@@ -1484,8 +1584,7 @@ let adjDrag = null;
     ADJ.mode = b.dataset.mode;
     if (ADJ.mode === "crop"){   // voltou pro Cortar: retoma o enquadramento do chip
       ADJ.cropRatio = ADJ.ratio;
-      const off = ADJ.offs[rk(ADJ.ratio)] || { ox: 0.5, oy: 0.5 };
-      ADJ.ox = off.ox; ADJ.oy = off.oy;
+      loadOff(ADJ.offs[rk(ADJ.ratio)]);
     }
     syncModeBtns(); drawAdj();
   }));
@@ -1496,6 +1595,17 @@ let adjDrag = null;
   });
   $("adjRotReset").addEventListener("click", () => {
     ADJ.rot = 0; $("adjRot").value = 0; $("adjRotVal").textContent = "0°"; drawAdj();
+  });
+  $("adjZoom").addEventListener("input", () => {
+    ADJ.zoom = +$("adjZoom").value;
+    $("adjZoomVal").textContent = ADJ.zoom.toFixed(2) + "×";
+    if (ADJ.mode === "crop") ADJ.offs[rk(ADJ.ratio)] = curOff();
+    drawAdj();
+  });
+  $("adjZoomReset").addEventListener("click", () => {
+    ADJ.zoom = 1; syncAdjSliders();
+    if (ADJ.mode === "crop") ADJ.offs[rk(ADJ.ratio)] = curOff();
+    drawAdj();
   });
   $("adjUseCrop").addEventListener("change", () => {
     ADJ.useCrop = $("adjUseCrop").checked; drawAdj();
@@ -1585,17 +1695,8 @@ function render(){
 
 window.step = (d) => { idx += d; render(); };
 
-$("images").addEventListener("change", (e) => {
-  urls.forEach(URL.revokeObjectURL);
-  files = Array.from(e.target.files).slice(0,10);
-  urls = files.map(f => URL.createObjectURL(f));
-  idx = 0;
-  igAlts = files.map(() => "");
-  renderAlts("instagram");
-  $("imgHint").textContent = files.length ? `${files.length} imagem(ns) — ordem do carrossel.` : "A ordem dos arquivos é a ordem do carrossel.";
-  igMediaHints();
-  render();
-});
+// acrescenta ao carrossel (não substitui); ✕/▲▼ nas linhas de alt removem/ordenam
+$("images").addEventListener("change", (e) => imgAppend("instagram", e.target, 10));
 ["caption","collaborators","tagged","location_name","is_posted"].forEach(id =>
   $(id).addEventListener("input", render));
 $("copy-instagram").addEventListener("click", () => copyAcross("instagram"));
