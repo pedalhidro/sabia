@@ -359,14 +359,21 @@ const CH = {
               targetLabel:"Google Agenda (calendario.pedalhidrografi.co)" },
 };
 const ORDER = ["universal", "instagram", "reel", "whatsapp", "telegram", "mastodon", "reddit", "email", "gcal"];
-const ST = {};                    // estado por canal (≠ IG/universal): {files, urls, alts}
+// Recorte NÃO-DESTRUTIVO: as abas guardam o arquivo ORIGINAL + um "hint" de
+// enquadramento ({offs: {ratioKey: {ox,oy,z}}, rot, ratio?}) — o recorte só é
+// aplicado NA HORA DE PUBLICAR (exportImage), então dá pra reabrir o ajustador
+// e corrigir qualquer erro antes de postar. hint = null → arquivo vai como
+// está; hint sem `ratio` → corta na proporção ⭐ do canal. As urls de preview
+// mostram o resultado JÁ recortado (refreshPreview). Só Preencher/Esticar
+// mudam os pixels de verdade (e zeram o hint).
+const ST = {};                    // estado por canal (≠ IG/universal): {files, urls, alts, hints}
 ORDER.filter(k => k !== "universal" && k !== "instagram")
-     .forEach(k => ST[k] = { files: [], urls: [], alts: [] });
+     .forEach(k => ST[k] = { files: [], urls: [], alts: [], hints: [] });
 // imagens ORIGINAIS da matriz universal; cropHints[i] = enquadramento salvo no
-// ajustador ({offs: {ratioKey: {ox,oy}}, rot}) — o derivar recorta cada canal
-// com ele (sem hint = recorte central, como sempre foi).
+// ajustador — o derivar CLONA pra cada aba (que segue editável por canal).
 const UNI = { files: [], urls: [], alts: [], cropHints: [] };
 let igAlts = [];                  // alt-text das imagens do IG (paralelo a files)
+let igHints = [];                 // enquadramentos do IG (paralelo a files)
 const DERIVED = {};               // canal → IRI do ph:UniversalPost de origem
 let cur = "universal";
 let DRY = true;                   // de /api/config
@@ -577,10 +584,13 @@ async function deriveUniversal(){
     if (k === "instagram"){
       $("caption").value = text;
       if (UNI.files.length){
-        files = await Promise.all(UNI.files.slice(0, 10).map((f, i) =>
-          cropToRatio(f, (CFG.media.instagram || {}).recommended_ratio, UNI.cropHints[i])));
+        // transmite ORIGINAIS + enquadramentos (não o recorte pronto): a aba
+        // segue editável e o corte só acontece ao publicar (exportImage).
         urls.forEach(URL.revokeObjectURL);
-        urls = files.map(f => URL.createObjectURL(f));
+        files = UNI.files.slice(0, 10);
+        igHints = files.map((_, i) => cloneHint(UNI.cropHints[i]) || { offs: {}, rot: 0 });
+        urls = files.map(() => null);
+        await Promise.all(files.map((_, i) => refreshPreview("instagram", i)));
         idx = 0;
         igAlts = UNI.alts.slice(0, files.length);
         igMediaHints(); renderAlts("instagram");
@@ -592,9 +602,10 @@ async function deriveUniversal(){
       if (c.hasTitle) $(`f-${k}-title`).value = fallbackTitle.slice(0, c.maxTitle);
       if (c.maxImages > 0 && !c.video && UNI.files.length){
         ST[k].urls.forEach(URL.revokeObjectURL);
-        ST[k].files = await Promise.all(UNI.files.slice(0, c.maxImages).map((f, i) =>
-          cropToRatio(f, (CFG.media[k] || {}).recommended_ratio, UNI.cropHints[i])));
-        ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
+        ST[k].files = UNI.files.slice(0, c.maxImages);
+        ST[k].hints = ST[k].files.map((_, i) => cloneHint(UNI.cropHints[i]) || { offs: {}, rot: 0 });
+        ST[k].urls = ST[k].files.map(() => null);
+        await Promise.all(ST[k].files.map((_, i) => refreshPreview(k, i)));
         ST[k].alts = UNI.alts.slice(0, ST[k].files.length);
         mediaHints(k); renderAlts(k);
       }
@@ -705,6 +716,7 @@ function wirePane(k){
       ST[k].files = Array.from(e.target.files).slice(0, c.maxImages);
       ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
       ST[k].alts = ST[k].files.map(() => "");
+      ST[k].hints = ST[k].files.map(() => null);
       videoHints(k); chUpdate(k);
       return;
     }
@@ -731,7 +743,8 @@ function mediaHints(k){
   const media = CFG.media[k] || {}, hint = $(`f-${k}-imghint`);
   if (!hint) return;
   const warns = [];
-  ST[k].files.forEach(f => {
+  ST[k].files.forEach((f, i) => {
+    if (ST[k].hints[i]) return;   // com enquadramento, sai JPEG 1080px do export
     if (media.image_formats && media.image_formats.length && !media.image_formats.includes(f.type))
       warns.push(`${f.name}: formato ${f.type || "?"} não aceito`);
     if (media.max_image_bytes && f.size > media.max_image_bytes)
@@ -843,7 +856,9 @@ async function chSend(k, confirmFlag){
     fd.append("event_end", $(`f-${k}-end`).value);
     fd.append("event_location", $(`f-${k}-place`).value);
   }
-  ST[k].files.forEach(f => fd.append("images", f));
+  // recorte NÃO-destrutivo: o corte (hint) é aplicado agora, na exportação
+  for (let i = 0; i < ST[k].files.length; i++)
+    fd.append("images", await exportImage(k, ST[k].files[i], ST[k].hints[i]));
   ST[k].files.forEach((_, i) => fd.append("alts", ST[k].alts[i] || ""));
   if (DERIVED[k]) fd.append("derived_from", DERIVED[k]);   // prov:wasDerivedFrom
   fd.append("is_posted", $(`f-${k}-posted`).checked ? "true" : "false");
@@ -915,6 +930,14 @@ async function copyAcross(from){
   // vídeo não vira imagem: copiando DO Reel, só o texto viaja
   const srcFiles = from === "instagram" ? files : (CH[from].video ? [] : ST[from].files);
   const srcAlts = chAltList(from).slice();
+  // ORIGINAIS + enquadramentos viajam juntos; o `ratio` salvo no canal de
+  // origem NÃO (cada destino corta na própria ⭐, mantendo offset/zoom/rot).
+  const srcHints = (from !== "instagram" && CH[from].video) ? [] : chHints(from);
+  const hintFor = i => {
+    const h = cloneHint(srcHints[i]) || { offs: {}, rot: 0 };
+    delete h.ratio;
+    return h;
+  };
   const firstLine = (title || text.split("\n")[0] || "").trim();
   const res = from === "instagram" ? $("result") : $(`f-${from}-result`);
   res.className = "result"; res.textContent = "📋 Copiando (recortando as imagens)…";
@@ -923,10 +946,11 @@ async function copyAcross(from){
     if (k === "instagram"){
       $("caption").value = text.slice(0, MAX);
       if (srcFiles.length){
-        files = await Promise.all(srcFiles.slice(0, 10).map(f =>
-          cropToRatio(f, (CFG.media.instagram || {}).recommended_ratio)));
         urls.forEach(URL.revokeObjectURL);
-        urls = files.map(f => URL.createObjectURL(f));
+        files = srcFiles.slice(0, 10);
+        igHints = files.map((_, i) => hintFor(i));
+        urls = files.map(() => null);
+        await Promise.all(files.map((_, i) => refreshPreview("instagram", i)));
         idx = 0;
         igAlts = srcAlts.slice(0, files.length);
         $("imgHint").textContent = `${files.length} imagem(ns) — ordem do carrossel.`;
@@ -939,9 +963,10 @@ async function copyAcross(from){
       if (c.hasTitle) $(`f-${k}-title`).value = firstLine.slice(0, c.maxTitle);
       if (c.maxImages > 0 && !c.video && srcFiles.length){  // imagem não vira vídeo
         ST[k].urls.forEach(URL.revokeObjectURL);
-        ST[k].files = await Promise.all(srcFiles.slice(0, c.maxImages).map(f =>
-          cropToRatio(f, (CFG.media[k] || {}).recommended_ratio)));
-        ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
+        ST[k].files = srcFiles.slice(0, c.maxImages);
+        ST[k].hints = ST[k].files.map((_, i) => hintFor(i));
+        ST[k].urls = ST[k].files.map(() => null);
+        await Promise.all(ST[k].files.map((_, i) => refreshPreview(k, i)));
         ST[k].alts = srcAlts.slice(0, ST[k].files.length);
         mediaHints(k); renderAlts(k);
       }
@@ -1175,13 +1200,39 @@ function chUrlList(ch){
   return ST[ch] ? ST[ch].urls : [];
 }
 
+function chHints(ch){
+  if (ch === "instagram") return igHints;
+  if (ch === "universal") return UNI.cropHints;
+  return ST[ch] ? ST[ch].hints : [];
+}
+
+const cloneHint = h => h ? JSON.parse(JSON.stringify(h)) : null;
+function chRatio(k){ return (CFG.media[k] || {}).recommended_ratio; }
+
+// O arquivo COMO VAI PRO PROVEDOR: original sem hint; com hint, recortado na
+// proporção salva (ou na ⭐ do canal) com offset/zoom/rotação — sempre JPEG.
+async function exportImage(k, f, h){
+  if (!f || !f.type || !f.type.startsWith("image/")) return f;  // vídeo: intacto
+  if (!h) return f;
+  const r = (h.ratio != null ? h.ratio : chRatio(k)) || 0;
+  return cropToRatio(f, r, h);
+}
+
+// Preview da aba = o resultado do exportImage (o que REALMENTE sai).
+async function refreshPreview(k, i){
+  const [fs, us, , hints] = imgArrays(k);
+  const out = await exportImage(k, fs[i], hints[i]);
+  if (us[i]) URL.revokeObjectURL(us[i]);
+  us[i] = URL.createObjectURL(out);
+}
+
 // ── remover/reordenar imagens já escolhidas (antes de publicar) ──────────────
 // Tudo em splice/swap NO LUGAR: files/urls/alts (e cropHints na universal)
 // são referências vivas — reatribuir quebraria o resto do estado.
 function imgArrays(k){
-  if (k === "instagram") return [files, urls, igAlts, null];
+  if (k === "instagram") return [files, urls, igAlts, igHints];
   if (k === "universal") return [UNI.files, UNI.urls, UNI.alts, UNI.cropHints];
-  return [ST[k].files, ST[k].urls, ST[k].alts, null];
+  return [ST[k].files, ST[k].urls, ST[k].alts, ST[k].hints];
 }
 
 function imgRefresh(k){
@@ -1222,13 +1273,20 @@ function imgMove(k, i, d){
 }
 
 // Browse ACRESCENTA à lista (não substitui) — remover é o ✕ de cada linha.
-// Devolve quantas entraram; zera o input pra re-escolher o mesmo arquivo.
-function imgAppend(k, input, cap){
-  const [fs, us, as] = imgArrays(k);
+// Formato que o canal não aceita (ex.: PNG no Instagram, que só publica JPEG)
+// é reencodado JPEG na entrada, mantendo a proporção — por isso o seletor
+// pode aceitar image/* em toda aba. Zera o input pra repetir o mesmo arquivo.
+async function imgAppend(k, input, cap){
+  const [fs, us, as, hints] = imgArrays(k);
   const room = Math.max(0, cap - fs.length);
   const add = Array.from(input.files).slice(0, room);
-  add.forEach(f => { fs.push(f); us.push(URL.createObjectURL(f)); as.push(""); });
   input.value = "";
+  const fmts = (CFG.media[k] || {}).image_formats || [];
+  for (let f of add){
+    if (f.type.startsWith("image/") && fmts.length && !fmts.includes(f.type))
+      f = await cropToRatio(f, 0);   // só transcodifica (proporção original)
+    fs.push(f); us.push(URL.createObjectURL(f)); as.push(""); hints.push(null);
+  }
   imgRefresh(k);
   return add.length;
 }
@@ -1330,6 +1388,7 @@ function openAdjuster(ch){
   ADJ.ch = ch; ADJ.i = 0; ADJ.mode = "crop"; ADJ.ox = ADJ.oy = 0.5;
   ADJ.useCrop = false; $("adjUseCrop").checked = false;
   const media = CFG.media[ch] || {};
+  ADJ.media = media;   // pro loadAdjImage poder reconstruir os chips por imagem
   ADJ.ratio = media.recommended_ratio || 0;   // 0 = "original" (canal sem ⭐, ex.: e-mail)
   ADJ.cropRatio = ADJ.ratio;
   buildRatioChips(media);
@@ -1382,23 +1441,31 @@ function syncModeBtns(){
   $("adjUseCropWrap").style.display = ADJ.mode === "crop" ? "none" : "flex";
   // zoom só age no recorte (e no derivar) — fora do Cortar fica apagado
   $("adjZoom").disabled = $("adjZoomReset").disabled = ADJ.mode !== "crop";
-  const uniCrop = ADJ.ch === "universal" && ADJ.mode === "crop";
-  $("adjApply").textContent = uniCrop ? "Salvar recortes desta imagem" : "Aplicar nesta imagem";
-  $("adjHint").textContent = uniCrop
-    ? "Arraste pra enquadrar CADA proporção (troque no chip). Salvar guarda os recortes — o Derivar usa eles, sem mexer na imagem da matriz."
-    : "No modo Cortar, arraste a imagem pra enquadrar. ⭐ = proporção ideal do canal.";
+  const crop = ADJ.mode === "crop";
+  $("adjApply").textContent = crop ? "Salvar recorte desta imagem" : "Aplicar nesta imagem";
+  $("adjHint").textContent = !crop
+    ? "Preencher/Esticar geram um arquivo novo (mudam os pixels). ⭐ = proporção ideal do canal."
+    : ADJ.ch === "universal"
+      ? "Arraste pra enquadrar CADA proporção (troque no chip). O recorte é aplicado ao derivar — e segue editável em cada aba."
+      : "Arraste pra enquadrar (⭐ = proporção ideal). O recorte só é aplicado ao PUBLICAR — reabra pra corrigir quando quiser.";
 }
 
 function loadAdjImage(){
   const list = chFileList(ADJ.ch);
   ADJ.i = Math.max(0, Math.min(ADJ.i, list.length - 1));
   $("adjCounter").textContent = `(${ADJ.i + 1}/${list.length})`;
-  ADJ.ox = ADJ.oy = 0.5; ADJ.rot = 0; ADJ.zoom = 1; ADJ.offs = {};
-  // universal: recarrega o enquadramento salvo desta imagem (se houver)
-  const hint = ADJ.ch === "universal" ? UNI.cropHints[ADJ.i] : null;
+  ADJ.ox = ADJ.oy = 0.5; ADJ.rot = 0; ADJ.zoom = 1; ADJ.offs = {}; ADJ.dirty = false;
+  // recarrega o enquadramento salvo desta imagem (qualquer aba)
+  const hint = chHints(ADJ.ch)[ADJ.i];
   if (hint){
     ADJ.offs = JSON.parse(JSON.stringify(hint.offs || {}));
     ADJ.rot = hint.rot || 0;
+    // hint de canal com proporção própria salva: volta pro chip dela
+    if (ADJ.ch !== "universal" && hint.ratio != null
+        && Math.abs(hint.ratio - ADJ.ratio) > 1e-9){
+      ADJ.ratio = hint.ratio; ADJ.cropRatio = hint.ratio;
+      buildRatioChips(ADJ.media || {});
+    }
     const off = ADJ.offs[rk(ADJ.ratio)];
     if (off){ ADJ.ox = off.ox; ADJ.oy = off.oy; ADJ.zoom = off.z || 1; }
   }
@@ -1513,43 +1580,47 @@ function updateAdjMulti(){
   });
 }
 
+// Salva o enquadramento da imagem atual como HINT (nada de arquivo novo):
+// o recorte acontece só ao publicar/derivar — sempre dá pra corrigir depois.
+function saveCropHint(){
+  ADJ.offs[rk(ADJ.ratio)] = curOff();
+  const h = { offs: JSON.parse(JSON.stringify(ADJ.offs)), rot: ADJ.rot };
+  // Aba de canal: guarda também a proporção escolhida no chip (a universal
+  // não — lá cada canal corta na própria ⭐ ao derivar).
+  if (ADJ.ch !== "universal") h.ratio = ADJ.ratio;
+  chHints(ADJ.ch)[ADJ.i] = h;
+  ADJ.dirty = false;
+  if (ADJ.ch !== "universal")
+    refreshPreview(ADJ.ch, ADJ.i).then(() => imgRefresh(ADJ.ch));
+}
+
 function applyAdj(){
   const list = chFileList(ADJ.ch);
   const old = list[ADJ.i];
-  // Universal + Cortar: NÃO gera arquivo — salva o enquadramento por proporção
-  // e o Derivar recorta cada canal com ele (a matriz publica a original).
-  if (ADJ.ch === "universal" && ADJ.mode === "crop"){
-    ADJ.offs[rk(ADJ.ratio)] = curOff();
-    UNI.cropHints[ADJ.i] = { offs: { ...ADJ.offs }, rot: ADJ.rot };
-    const res = $("f-universal-result");
-    res.className = "result ok";
-    res.textContent = `✂️ Enquadramentos da imagem ${ADJ.i + 1} salvos — o Derivar recorta cada canal com eles.`;
+  if (ADJ.mode === "crop"){
+    saveCropHint();
+    const res = $(ADJ.ch === "instagram" ? "result" : `f-${ADJ.ch}-result`);
+    if (res){
+      res.className = "result ok";
+      res.textContent = `✂️ Enquadramento da imagem ${ADJ.i + 1} salvo — o recorte é `
+        + (ADJ.ch === "universal" ? "aplicado ao derivar (e segue editável em cada aba)."
+                                  : "aplicado ao publicar (reabra pra corrigir quando quiser).");
+    }
     if (ADJ.i < list.length - 1){ ADJ.i++; loadAdjImage(); }
     else closeAdjuster();
     return;
   }
+  // Preencher/Esticar mudam os pixels de verdade: geram arquivo e zeram o hint.
   $("adjCanvas").toBlob(blob => {
     if (!blob) return;
     const name = (old.name || "img").replace(/\.[^.]+$/, "") + "-ajustada.jpg";
     const nf = new File([blob], name, { type: "image/jpeg" });   // sempre JPEG (o IG exige)
-    if (ADJ.ch === "instagram"){
-      files[ADJ.i] = nf;
-      urls.forEach(URL.revokeObjectURL);
-      urls = files.map(f => URL.createObjectURL(f));
-      igMediaHints(); render();
-    } else if (ADJ.ch === "universal"){
-      UNI.files[ADJ.i] = nf;
-      UNI.urls.forEach(URL.revokeObjectURL);
-      UNI.urls = UNI.files.map(f => URL.createObjectURL(f));
-      UNI.cropHints[ADJ.i] = null;   // os pixels mudaram — enquadramento antigo já era
-      if (cur === "universal") chRender("universal");
-    } else {
-      ST[ADJ.ch].files[ADJ.i] = nf;
-      ST[ADJ.ch].urls.forEach(URL.revokeObjectURL);
-      ST[ADJ.ch].urls = ST[ADJ.ch].files.map(f => URL.createObjectURL(f));
-      mediaHints(ADJ.ch);
-      if (cur === ADJ.ch) chRender(ADJ.ch);
-    }
+    const [fs, us, , hints] = imgArrays(ADJ.ch);
+    fs[ADJ.i] = nf;
+    if (us[ADJ.i]) URL.revokeObjectURL(us[ADJ.i]);
+    us[ADJ.i] = URL.createObjectURL(nf);
+    hints[ADJ.i] = null;
+    imgRefresh(ADJ.ch);
     if (ADJ.i < list.length - 1){ ADJ.i++; loadAdjImage(); }     // próxima ou fecha
     else closeAdjuster();
   }, "image/jpeg", 0.92);
@@ -1577,6 +1648,7 @@ let adjDrag = null;
     if (g.sx > 0) ADJ.ox = clamp01(adjDrag.ox - dxi / g.sx);
     if (g.sy > 0) ADJ.oy = clamp01(adjDrag.oy - dyi / g.sy);
     ADJ.offs[rk(ADJ.ratio)] = curOff();
+    ADJ.dirty = true;
     drawAdj();
   });
   ["pointerup", "pointercancel"].forEach(ev => cv.addEventListener(ev, () => adjDrag = null));
@@ -1591,31 +1663,39 @@ let adjDrag = null;
   $("adjRot").addEventListener("input", () => {
     ADJ.rot = +$("adjRot").value;
     $("adjRotVal").textContent = ADJ.rot + "°";
+    if (ADJ.mode === "crop") ADJ.dirty = true;
     drawAdj();
   });
   $("adjRotReset").addEventListener("click", () => {
-    ADJ.rot = 0; $("adjRot").value = 0; $("adjRotVal").textContent = "0°"; drawAdj();
+    ADJ.rot = 0; $("adjRot").value = 0; $("adjRotVal").textContent = "0°";
+    if (ADJ.mode === "crop") ADJ.dirty = true;
+    drawAdj();
   });
   $("adjZoom").addEventListener("input", () => {
     ADJ.zoom = +$("adjZoom").value;
     $("adjZoomVal").textContent = ADJ.zoom.toFixed(2) + "×";
-    if (ADJ.mode === "crop") ADJ.offs[rk(ADJ.ratio)] = curOff();
+    if (ADJ.mode === "crop"){ ADJ.offs[rk(ADJ.ratio)] = curOff(); ADJ.dirty = true; }
     drawAdj();
   });
   $("adjZoomReset").addEventListener("click", () => {
     ADJ.zoom = 1; syncAdjSliders();
-    if (ADJ.mode === "crop") ADJ.offs[rk(ADJ.ratio)] = curOff();
+    if (ADJ.mode === "crop"){ ADJ.offs[rk(ADJ.ratio)] = curOff(); ADJ.dirty = true; }
     drawAdj();
   });
   $("adjUseCrop").addEventListener("change", () => {
     ADJ.useCrop = $("adjUseCrop").checked; drawAdj();
   });
-  $("adjPrev").addEventListener("click", () => { if (ADJ.i > 0){ ADJ.i--; loadAdjImage(); } });
+  // navegar/fechar não perde o enquadramento: no Cortar, arrasto/zoom/rotação
+  // pendentes são salvos sozinhos (é hint, não arquivo — sempre reeditável)
+  const keepCrop = () => { if (ADJ.mode === "crop" && ADJ.dirty) saveCropHint(); };
+  $("adjPrev").addEventListener("click", () => {
+    keepCrop(); if (ADJ.i > 0){ ADJ.i--; loadAdjImage(); } });
   $("adjNext").addEventListener("click", () => {
-    if (ADJ.i < chFileList(ADJ.ch).length - 1){ ADJ.i++; loadAdjImage(); } });
+    keepCrop(); if (ADJ.i < chFileList(ADJ.ch).length - 1){ ADJ.i++; loadAdjImage(); } });
   $("adjApply").addEventListener("click", applyAdj);
-  $("adjClose").addEventListener("click", closeAdjuster);
-  $("adjModal").addEventListener("click", e => { if (e.target === $("adjModal")) closeAdjuster(); });
+  $("adjClose").addEventListener("click", () => { keepCrop(); closeAdjuster(); });
+  $("adjModal").addEventListener("click", e => {
+    if (e.target === $("adjModal")){ keepCrop(); closeAdjuster(); } });
 })();
 
 // ── Instagram (código original, + hints de espec. de mídia) ──────────────────
@@ -1626,7 +1706,8 @@ let idx = 0;
 function igMediaHints(){
   const media = CFG.media.instagram || {}, hint = $("imgHint");
   const warns = [];
-  files.forEach(f => {
+  files.forEach((f, i) => {
+    if (igHints[i]) return;       // com enquadramento, sai JPEG 1080px do export
     if (media.image_formats && media.image_formats.length && !media.image_formats.includes(f.type))
       warns.push(`${f.name}: a Graph API só publica JPEG`);
     if (media.max_image_bytes && f.size > media.max_image_bytes)
@@ -1714,7 +1795,9 @@ async function sendPublish(confirm){
   btn.disabled = true; res.className="result"; res.textContent="Enviando…";
   const fd = new FormData();
   fd.append("channel", "instagram");
-  files.forEach(f => fd.append("images", f));
+  // recorte NÃO-destrutivo: o corte (hint) é aplicado agora, na exportação
+  for (let i = 0; i < files.length; i++)
+    fd.append("images", await exportImage("instagram", files[i], igHints[i]));
   files.forEach((_, i) => fd.append("alts", igAlts[i] || ""));
   if (DERIVED.instagram) fd.append("derived_from", DERIVED.instagram);
   fd.append("caption", $("caption").value);
@@ -1819,9 +1902,9 @@ fetch("/api/config").then(r=>r.json()).then(c=>{
         `${mt.data_access_days_left} dia(s)${mt.data_access_expires_on ? ` (${mt.data_access_expires_on})` : ""} — ` +
         "rode python scripts/refresh_manage_token.py e ./deploy.sh antes disso.";
   }
-  const media = CFG.media.instagram || {};
-  if (media.image_formats && media.image_formats.length)
-    $("images").setAttribute("accept", media.image_formats.join(","));
+  // O seletor aceita QUALQUER imagem (PNG, WEBP…): o imgAppend reencoda JPEG
+  // o que o canal não publica — restringir o accept só atrapalhava o browse.
+  $("images").setAttribute("accept", "image/*");
   buildUniversalPane();
   ORDER.filter(k => k !== "universal" && k !== "instagram").forEach(buildPane);
   buildTabs();
