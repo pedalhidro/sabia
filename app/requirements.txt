@@ -1,13 +1,16 @@
 fastapi>=0.110
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9
-# rdflib <7.6 quebra com pyparsing 3.2 (Param.postParse2 TypeError ao parsear
-# as sh:rule SPARQL) — o resolver do container chegou a instalar essa combinação
-# e derrubou o classify()/grade. Pisos = a combinação testada localmente.
-rdflib>=7.6
-pyparsing>=3.2
+# PINS EXATOS de propósito: o trio rdflib/pyparsing/pyshacl já quebrou DUAS
+# vezes por deriva do resolver no build do container (Param.postParse2
+# TypeError ao parsear as sh:rule SPARQL — derruba validate() e classify()).
+# 1ª: rdflib <7.6 com pyparsing 3.2; 2ª: pyparsing 3.3.x com rdflib 7.6.
+# Só suba as três versões JUNTAS, testando local antes:
+#   python3 -c "from pyshacl import validate; ..." (ver app/test_channels.py)
+rdflib==7.6.0
+pyparsing==3.2.5
 google-cloud-storage>=2.16
 # sugestão de alt-text por IA (opcional em runtime — só usado com ANTHROPIC_API_KEY)
 anthropic>=0.116
-# optional: live SHACL check after each publish
-pyshacl>=0.31
+# optional: live SHACL check after each publish (pin exato — ver nota acima)
+pyshacl==0.31.0
