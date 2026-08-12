@@ -107,6 +107,8 @@
             background:linear-gradient(45deg,#feda75,#d62976,#962fbf); flex:none; }
   .uname { font-weight:600; font-size:14px; line-height:1.2; }
   .uloc { font-size:12px; color:#262626; }
+  /* 1:1 é só o estado vazio — com imagem, o render() troca pela proporção
+     REAL da primeira foto (igual ao IG: o carrossel trava na primeira). */
   .frame { position:relative; width:100%; aspect-ratio:1/1; background:#efefef; }
   .frame img { width:100%; height:100%; object-fit:cover; display:block; }
   .frame .empty { display:flex; align-items:center; justify-content:center; height:100%; color:var(--muted); font-size:14px; }
@@ -149,7 +151,8 @@
                white-space:pre-wrap; word-break:break-word; }
   .tg-bubble .tg-title { font-weight:600; color:#3a6d99; font-size:13px; margin-bottom:3px; }
   .tg-imgs { display:grid; gap:2px; border-radius:8px; overflow:hidden; margin-bottom:6px; }
-  .tg-imgs img { width:100%; height:100%; object-fit:cover; display:block; aspect-ratio:4/3; }
+  /* 16:9 = a proporção ⭐ do canal (o export recorta nela) — 4:3 chopava as laterais */
+  .tg-imgs img { width:100%; height:100%; object-fit:cover; display:block; aspect-ratio:16/9; }
   .tg-time { text-align:right; font-size:10px; color:#8aa4b8; margin-top:3px; }
   /* Mastodon */
   .ms-imgs { display:grid; gap:3px; border-radius:8px; overflow:hidden; margin-top:8px; }
@@ -1737,8 +1740,16 @@ function render(){
   const frame = $("frame"), dots = $("dots");
   if(urls.length === 0){
     frame.innerHTML = '<div class="empty">Selecione imagens</div>';
+    frame.style.aspectRatio = "";   // vazio: volta pro 1:1 do CSS
     dots.innerHTML = "";
   } else {
+    // O preview segue a proporção REAL da 1ª imagem (como o IG: o carrossel
+    // trava na proporção da primeira e recorta as demais via object-fit).
+    const probe = new Image();
+    probe.onload = () => {
+      frame.style.aspectRatio = `${probe.naturalWidth} / ${probe.naturalHeight}`;
+    };
+    probe.src = urls[0];
     idx = Math.max(0, Math.min(idx, urls.length-1));
     const tags = parseHandles($("tagged").value);
     let html = `<img src="${urls[idx]}" alt="">`;
