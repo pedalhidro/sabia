@@ -77,6 +77,9 @@
   .ritem .rdel { flex:none; border:1px solid var(--line); background:#fff; color:#c2410c;
                  border-radius:6px; font-size:11px; padding:2px 6px; cursor:pointer; }
   .ritem .rdel:hover { background:#fff1f2; }
+  /* alt-text: começa com 2 linhas, estica no arrasto até ~3; além disso rola */
+  .altlist textarea.altin { min-height:2.9em; max-height:72px; resize:vertical;
+                            font-size:13px; line-height:1.4; }
   .recent-empty { color:var(--muted); font-size:12px; }
 
   /* ── posts grid (Instagram) ── */
@@ -1092,10 +1095,9 @@ function renderAlts(k){
   const need = k === "mastodon";
   host.innerHTML = fileList.map((f, i) => `
     <label style="font-size:12px">Alt da imagem ${i + 1}${need ? " (obrigatório)" : ""}</label>
-    <div style="display:flex;gap:6px;align-items:center">
-      <input type="text" class="altin" data-i="${i}" maxlength="1500" style="flex:1"
-             placeholder="descreva a foto pra quem usa leitor de tela"
-             value="${escapeHtml(altList[i] || "")}" />
+    <div style="display:flex;gap:6px;align-items:flex-start">
+      <textarea class="altin" data-i="${i}" maxlength="1500" rows="2" style="flex:1"
+                placeholder="descreva a foto pra quem usa leitor de tela">${escapeHtml(altList[i] || "")}</textarea>
       ${CFG.alt_ai ? `<button class="altai" data-i="${i}" title="sugerir com IA">✨</button>` : ""}
     </div>`).join("");
   host.querySelectorAll(".altin").forEach(inp => inp.addEventListener("input", () => {
