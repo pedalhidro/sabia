@@ -273,6 +273,11 @@ async def api_publish(
     posted = is_posted.lower() in ("1", "true", "yes", "on")
     confirmed = confirm.lower() in ("1", "true", "yes", "on")
     alts = [a.strip() for a in alts]
+    if any(len(a) > ttl_store.MAX_ALT_CHARS for a in alts):
+        return JSONResponse(
+            {"ok": False, "error": f"Texto alternativo com mais de {ttl_store.MAX_ALT_CHARS} "
+                                   "caracteres — resuma (dá pra transcrever só o essencial do cartaz)."},
+            status_code=400)
     if channel == "universal":
         return await _record_universal(request, images, blocks, title, alts)
     if channel != "instagram":

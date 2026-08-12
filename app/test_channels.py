@@ -286,6 +286,9 @@ check("mastodon com imagem SEM alt → 400", r.status_code == 400
 r = publish("whatsapp", text="whatsapp sem alt passa (Warning só)", images=1)
 check("whatsapp sem alt → 200 (alt é ideal, não exigência)",
       r.status_code == 200 and r.json()["validation"]["conforms"], r.text[:140])
+r = publish("whatsapp", text="alt gigante", images=1, alts=["x" * 501])
+check("alt >500 caracteres → 400", r.status_code == 400
+      and "500" in r.text, r.text[:120])
 
 print("\n3) travas de publicação ao vivo")
 r = publish("whatsapp", text="oi", confirm=False)

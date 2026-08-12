@@ -119,8 +119,8 @@ ph:AnnouncementImageAltTextShape a sh:NodeShape ;
         sh:severity sh:Violation ;
         sh:maxCount 1 ;
         sh:datatype xsd:string ;
-        sh:maxLength 1500 ;
-        sh:message "Se declarado, o texto alternativo (schema:description) é UM literal de até 1500 caracteres (limite do Mastodon)."@pt ;
+        sh:maxLength 500 ;
+        sh:message "Se declarado, o texto alternativo (schema:description) é UM literal de até 500 caracteres — conciso pra leitor de tela; dá pra transcrever um cartaz (o Mastodon aceitaria até 1500)."@pt ;
     ] .
 
 # Vídeo de anúncio — mesmo espírito da imagem: só a URL obrigatória; tamanho e

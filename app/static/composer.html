@@ -1093,15 +1093,20 @@ function renderAlts(k){
   const fileList = chFileList(k), altList = chAltList(k);
   if (!fileList.length){ host.innerHTML = ""; return; }
   const need = k === "mastodon";
+  const ALT_MAX = 500;   // espelha ttl_store.MAX_ALT_CHARS / shape SHACL
   host.innerHTML = fileList.map((f, i) => `
-    <label style="font-size:12px">Alt da imagem ${i + 1}${need ? " (obrigatório)" : ""}</label>
+    <label style="font-size:12px">Alt da imagem ${i + 1}${need ? " (obrigatório)" : ""}
+      <span class="count" data-altcount="${i}">${(altList[i] || "").length} / ${ALT_MAX}</span></label>
     <div style="display:flex;gap:6px;align-items:flex-start">
-      <textarea class="altin" data-i="${i}" maxlength="1500" rows="2" style="flex:1"
+      <textarea class="altin" data-i="${i}" maxlength="${ALT_MAX}" rows="2" style="flex:1"
                 placeholder="descreva a foto pra quem usa leitor de tela">${escapeHtml(altList[i] || "")}</textarea>
       ${CFG.alt_ai ? `<button class="altai" data-i="${i}" title="sugerir com IA">✨</button>` : ""}
     </div>`).join("");
   host.querySelectorAll(".altin").forEach(inp => inp.addEventListener("input", () => {
-    altList[Number(inp.dataset.i)] = inp.value;
+    const i = Number(inp.dataset.i);
+    altList[i] = inp.value;
+    const c = host.querySelector(`[data-altcount="${i}"]`);
+    if (c) c.textContent = `${inp.value.length} / ${ALT_MAX}`;
   }));
   const resBox = $(k === "instagram" ? "result" : `f-${k}-result`);
   host.querySelectorAll(".altai").forEach(btn => btn.addEventListener("click", async () => {

@@ -82,6 +82,10 @@ INSTAGRAM_MAX_TEXT = 2150
 # deleteMessage, Mastodon DELETE /statuses, Whapi DELETE /messages, Agenda
 # events.delete). Reel/e-mail não têm des-envio; o Instagram tem fluxo próprio.
 DELETABLE_CHANNELS = {"telegram", "mastodon", "whatsapp", "gcal"}
+# Texto alternativo: até 500 caracteres (espelha a ph:AnnouncementImageAltTextShape
+# — conciso pra leitor de tela, mas com espaço pra transcrever um cartaz).
+MAX_ALT_CHARS = 500
+
 # Janela de arrependimento: só dá pra apagar anúncio publicado há menos de 24h
 # (desfazer um engano fresco, não reescrever história). Gate simples de tempo,
 # em Python mesmo — não é regra derivada como as sh:rule da grade do Instagram.

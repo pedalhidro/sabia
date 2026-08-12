@@ -22,10 +22,11 @@ MODEL = "claude-opus-5"
 MODEL_LABEL = "Claude Opus 5"
 PROMPT = (
     "Escreva o texto alternativo (alt) desta imagem em português, para "
-    "leitores de tela: uma frase objetiva de 5 a 25 palavras. É a imagem de "
-    "um anúncio de passeio de bicicleta. Se a imagem contiver texto (cartaz), "
-    "transcreva o essencial. Não comece com 'imagem de' ou 'foto de'; sem "
-    "aspas nem emoji. Responda somente com o texto alternativo."
+    "leitores de tela: uma frase objetiva de 5 a 25 palavras (no máximo 450 "
+    "caracteres). É a imagem de um anúncio de passeio de bicicleta. Se a "
+    "imagem contiver texto (cartaz), transcreva o essencial. Não comece com "
+    "'imagem de' ou 'foto de'; sem aspas nem emoji. Responda somente com o "
+    "texto alternativo."
 )
 
 
