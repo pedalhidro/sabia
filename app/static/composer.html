@@ -302,6 +302,15 @@
       <button class="mbtn on" data-mode="crop">Cortar</button>
       <button class="mbtn" data-mode="fill">Preencher (desfoque)</button>
       <button class="mbtn" data-mode="stretch">Esticar</button>
+      <label id="adjUseCropWrap" style="display:none;align-items:center;gap:4px"
+             title="usa o recorte do modo Cortar como fonte, em vez da imagem inteira">
+        <input type="checkbox" id="adjUseCrop"> sobre o recorte</label>
+    </div>
+    <div class="mrow">
+      <label style="display:flex;align-items:center;gap:6px;flex:1">↻ Girar
+        <input type="range" id="adjRot" min="-180" max="180" step="1" value="0" style="flex:1">
+        <span id="adjRotVal" style="min-width:4ch;text-align:right">0°</span></label>
+      <button class="mbtn" id="adjRotReset" title="zerar a rotação">↺ 0°</button>
     </div>
     <div class="mcanvas"><canvas id="adjCanvas"></canvas></div>
     <div class="mrow" id="adjMulti" style="display:none"></div>
@@ -346,7 +355,10 @@ const ORDER = ["universal", "instagram", "reel", "whatsapp", "telegram", "mastod
 const ST = {};                    // estado por canal (≠ IG/universal): {files, urls, alts}
 ORDER.filter(k => k !== "universal" && k !== "instagram")
      .forEach(k => ST[k] = { files: [], urls: [], alts: [] });
-const UNI = { files: [], urls: [], alts: [] };  // imagens ORIGINAIS da matriz universal
+// imagens ORIGINAIS da matriz universal; cropHints[i] = enquadramento salvo no
+// ajustador ({offs: {ratioKey: {ox,oy}}, rot}) — o derivar recorta cada canal
+// com ele (sem hint = recorte central, como sempre foi).
+const UNI = { files: [], urls: [], alts: [], cropHints: [] };
 let igAlts = [];                  // alt-text das imagens do IG (paralelo a files)
 const DERIVED = {};               // canal → IRI do ph:UniversalPost de origem
 let cur = "universal";
@@ -469,6 +481,7 @@ function buildUniversalPane(){
     UNI.files = Array.from(e.target.files).slice(0, 20);
     UNI.urls = UNI.files.map(f => URL.createObjectURL(f));
     UNI.alts = UNI.files.map(() => "");
+    UNI.cropHints = [];   // imagens novas = enquadramentos zerados
     renderAlts("universal");
     $("f-universal-imghint").textContent =
       `${UNI.files.length} imagem(ns) — recortadas por canal ao derivar.`;
@@ -497,11 +510,13 @@ function uniUpdate(){
   if (cur === "universal") chRender("universal");
 }
 
-// Recorte automático: cover centrado na proporção do canal, JPEG 1080px.
+// Recorte automático: cover na proporção do canal, JPEG 1080px. Sem hint,
+// centrado; com hint (do ajustador da aba universal), usa o enquadramento
+// salvo pra ESSA proporção ({offs: {ratioKey: {ox,oy}}, rot}) + a rotação.
 // Sem ratio (e-mail): mantém a proporção ORIGINAL mas ainda reencoda JPEG —
 // formato uniforme em todos os canais (um HEIC de iPhone quebrava só a aba
 // de e-mail enquanto as outras recebiam JPEG do recorte).
-function cropToRatio(file, ratio){
+function cropToRatio(file, ratio, hint){
   return new Promise(res => {
     if (!file.type.startsWith("image/")) return res(file);
     const img = new Image();
@@ -512,9 +527,9 @@ function cropToRatio(file, ratio){
       const cv = document.createElement("canvas");
       cv.width = W; cv.height = H;
       const ctx = cv.getContext("2d");
-      const cover = Math.max(W / img.naturalWidth, H / img.naturalHeight);
-      const dw = img.naturalWidth * cover, dh = img.naturalHeight * cover;
-      ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      const off = (hint && hint.offs && hint.offs[rk(ratio)]) || { ox: 0.5, oy: 0.5 };
+      drawCover(ctx, img, img.naturalWidth, img.naturalHeight, W, H,
+                off.ox, off.oy, (hint && hint.rot) || 0);
       cv.toBlob(b => res(b
         ? new File([b], file.name.replace(/\.[^.]+$/, "")
                    + (ratio ? `-${ratioLabel(ratio).replace(":", "x")}` : "") + ".jpg",
@@ -563,8 +578,8 @@ async function deriveUniversal(){
     if (k === "instagram"){
       $("caption").value = text;
       if (UNI.files.length){
-        files = await Promise.all(UNI.files.slice(0, 10).map(f =>
-          cropToRatio(f, (CFG.media.instagram || {}).recommended_ratio)));
+        files = await Promise.all(UNI.files.slice(0, 10).map((f, i) =>
+          cropToRatio(f, (CFG.media.instagram || {}).recommended_ratio, UNI.cropHints[i])));
         urls.forEach(URL.revokeObjectURL);
         urls = files.map(f => URL.createObjectURL(f));
         idx = 0;
@@ -578,8 +593,8 @@ async function deriveUniversal(){
       if (c.hasTitle) $(`f-${k}-title`).value = fallbackTitle.slice(0, c.maxTitle);
       if (c.maxImages > 0 && !c.video && UNI.files.length){
         ST[k].urls.forEach(URL.revokeObjectURL);
-        ST[k].files = await Promise.all(UNI.files.slice(0, c.maxImages).map(f =>
-          cropToRatio(f, (CFG.media[k] || {}).recommended_ratio)));
+        ST[k].files = await Promise.all(UNI.files.slice(0, c.maxImages).map((f, i) =>
+          cropToRatio(f, (CFG.media[k] || {}).recommended_ratio, UNI.cropHints[i])));
         ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
         ST[k].alts = UNI.alts.slice(0, ST[k].files.length);
         mediaHints(k); renderAlts(k);
@@ -1066,7 +1081,61 @@ function chRender(k){
 // do canal — a alvo vem da espec. das shapes (recomendada = ⭐; faixa aceita
 // filtra os presets). Três modos: cortar (cover, arrastável), preencher
 // (contain sobre fundo borrado) e esticar (distorce).
-const ADJ = { ch: null, i: 0, img: null, mode: "crop", ratio: 1, ox: 0.5, oy: 0.5 };
+// offs = enquadramento POR proporção ({ratioKey: {ox,oy}}) da imagem atual;
+// cropRatio = a proporção em que o modo Cortar foi ajustado por último (é o
+// recorte que o "sobre o recorte" do preencher/esticar reaproveita);
+// rot = rotação em graus (entra em todos os modos e no derivar).
+const ADJ = { ch: null, i: 0, img: null, mode: "crop", ratio: 1, ox: 0.5, oy: 0.5,
+              rot: 0, offs: {}, cropRatio: 0, useCrop: false };
+
+// chave estável de uma proporção (0/ausente = "original")
+const rk = r => r ? r.toFixed(4) : "orig";
+
+// Geometria do cover COM rotação: pro retângulo W×H ficar 100% coberto pela
+// imagem girada em deg, ela precisa cobrir (no referencial DELA) a caixa do
+// retângulo girado ao contrário — W·|cos|+H·|sin| por W·|sin|+H·|cos|.
+// sx/sy = folga de arrasto (quanto sobra pra deslocar o enquadramento).
+function coverGeom(sw, sh, W, H, deg){
+  const rad = deg * Math.PI / 180;
+  const c = Math.abs(Math.cos(rad)), s = Math.abs(Math.sin(rad));
+  const needW = W * c + H * s, needH = W * s + H * c;
+  const cover = Math.max(needW / sw, needH / sh);
+  return { rad, cover, sx: sw * cover - needW, sy: sh * cover - needH };
+}
+
+function drawCover(ctx, src, sw, sh, W, H, ox, oy, deg){
+  const g = coverGeom(sw, sh, W, H, deg);
+  const dw = sw * g.cover, dh = sh * g.cover;
+  ctx.save();
+  ctx.translate(W / 2, H / 2); ctx.rotate(g.rad);
+  ctx.drawImage(src, -dw / 2 + (0.5 - ox) * g.sx, -dh / 2 + (0.5 - oy) * g.sy, dw, dh);
+  ctx.restore();
+}
+
+function drawContain(ctx, src, sw, sh, W, H, deg){
+  const rad = deg * Math.PI / 180;
+  const c = Math.abs(Math.cos(rad)), s = Math.abs(Math.sin(rad));
+  const fit = Math.min(W / (sw * c + sh * s), H / (sw * s + sh * c));
+  const dw = sw * fit, dh = sh * fit;
+  ctx.save();
+  ctx.translate(W / 2, H / 2); ctx.rotate(rad);
+  ctx.drawImage(src, -dw / 2, -dh / 2, dw, dh);
+  ctx.restore();
+}
+
+// O recorte do modo Cortar renderizado num canvas — vira a FONTE do
+// preencher/esticar quando "sobre o recorte" está ligado (a rotação já sai
+// aplicada aqui, então quem consome desenha com rot=0).
+function cropSource(){
+  const img = ADJ.img;
+  const r = ADJ.cropRatio || (img.naturalWidth / img.naturalHeight);
+  const cv = document.createElement("canvas");
+  cv.width = 1080; cv.height = Math.round(1080 / r);
+  const off = ADJ.offs[rk(ADJ.cropRatio)] || { ox: 0.5, oy: 0.5 };
+  drawCover(cv.getContext("2d"), img, img.naturalWidth, img.naturalHeight,
+            cv.width, cv.height, off.ox, off.oy, ADJ.rot);
+  return cv;
+}
 const RATIO_PRESETS = [["9:16", 0.5625], ["4:5", 0.8], ["1:1", 1], ["4:3", 4/3],
                        ["16:9", 16/9], ["1.91:1", 1.91]];
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
@@ -1160,8 +1229,10 @@ function openAdjuster(ch){
   const msg = ch === "instagram" ? $("result") : $(`f-${ch}-result`);
   if (!list.length){ msg.className = "result err"; msg.textContent = "Selecione imagens primeiro."; return; }
   ADJ.ch = ch; ADJ.i = 0; ADJ.mode = "crop"; ADJ.ox = ADJ.oy = 0.5;
+  ADJ.useCrop = false; $("adjUseCrop").checked = false;
   const media = CFG.media[ch] || {};
   ADJ.ratio = media.recommended_ratio || 0;   // 0 = "original" (canal sem ⭐, ex.: e-mail)
+  ADJ.cropRatio = ADJ.ratio;
   buildRatioChips(media);
   syncModeBtns();
   loadAdjImage();
@@ -1170,18 +1241,38 @@ function openAdjuster(ch){
 function closeAdjuster(){ $("adjModal").classList.remove("show"); ADJ.img = null; }
 
 function buildRatioChips(media){
-  let presets = RATIO_PRESETS;
-  if (media.min_ratio && media.max_ratio)   // só o que a plataforma aceita
-    presets = presets.filter(([, r]) => r >= media.min_ratio - 1e-6 && r <= media.max_ratio + 1e-6);
-  else                                      // sem faixa: "original" (0) entra primeiro
-    presets = [["original", 0], ...presets];
+  let presets;
+  if (ADJ.ch === "universal"){
+    // Na universal os chips são as proporções ⭐ dos CANAIS (com os ícones):
+    // cada chip guarda o próprio enquadramento e o derivar recorta com ele.
+    presets = [["original", 0], ...adjRatioGroups()
+      .filter(g => g.ratio)
+      .map(g => [`${g.icons.join("")} ${ratioLabel(g.ratio)}`, g.ratio])];
+  } else {
+    // Encaixa o ⭐ do shape (ex.: 1.78) no preset mais próximo (16:9 = 1.777…)
+    // — sem isso o chip nunca "batia" e o ajustador caía em "original".
+    presets = RATIO_PRESETS.map(([lab, r]) =>
+      media.recommended_ratio && Math.abs(r - media.recommended_ratio) < 0.02
+        ? [lab, media.recommended_ratio] : [lab, r]);
+    if (media.min_ratio && media.max_ratio)   // só o que a plataforma aceita
+      presets = presets.filter(([, r]) => r >= media.min_ratio - 1e-6 && r <= media.max_ratio + 1e-6);
+    else                                      // sem faixa: "original" (0) entra primeiro
+      presets = [["original", 0], ...presets];
+  }
   if (!presets.some(([, r]) => Math.abs(r - ADJ.ratio) < 1e-3)) ADJ.ratio = presets[0][1];
   $("adjRatios").innerHTML = "Proporção: " + presets.map(([lab, r]) => {
     const star = media.recommended_ratio && Math.abs(r - media.recommended_ratio) < 1e-3 ? " ⭐" : "";
     return `<button class="mbtn ratio ${Math.abs(r - ADJ.ratio) < 1e-3 ? "on" : ""}" data-r="${r}">${lab}${star}</button>`;
   }).join("");
   $("adjRatios").querySelectorAll(".ratio").forEach(b => b.addEventListener("click", () => {
+    // no Cortar cada proporção lembra o próprio enquadramento
+    if (ADJ.mode === "crop") ADJ.offs[rk(ADJ.ratio)] = { ox: ADJ.ox, oy: ADJ.oy };
     ADJ.ratio = parseFloat(b.dataset.r);
+    if (ADJ.mode === "crop"){
+      ADJ.cropRatio = ADJ.ratio;
+      const off = ADJ.offs[rk(ADJ.ratio)] || { ox: 0.5, oy: 0.5 };
+      ADJ.ox = off.ox; ADJ.oy = off.oy;
+    }
     $("adjRatios").querySelectorAll(".ratio").forEach(x => x.classList.toggle("on", x === b));
     drawAdj();
   }));
@@ -1190,13 +1281,28 @@ function buildRatioChips(media){
 function syncModeBtns(){
   $("adjModes").querySelectorAll("[data-mode]").forEach(b =>
     b.classList.toggle("on", b.dataset.mode === ADJ.mode));
+  $("adjUseCropWrap").style.display = ADJ.mode === "crop" ? "none" : "flex";
+  const uniCrop = ADJ.ch === "universal" && ADJ.mode === "crop";
+  $("adjApply").textContent = uniCrop ? "Salvar recortes desta imagem" : "Aplicar nesta imagem";
+  $("adjHint").textContent = uniCrop
+    ? "Arraste pra enquadrar CADA proporção (troque no chip). Salvar guarda os recortes — o Derivar usa eles, sem mexer na imagem da matriz."
+    : "No modo Cortar, arraste a imagem pra enquadrar. ⭐ = proporção ideal do canal.";
 }
 
 function loadAdjImage(){
   const list = chFileList(ADJ.ch);
   ADJ.i = Math.max(0, Math.min(ADJ.i, list.length - 1));
   $("adjCounter").textContent = `(${ADJ.i + 1}/${list.length})`;
-  ADJ.ox = ADJ.oy = 0.5;
+  ADJ.ox = ADJ.oy = 0.5; ADJ.rot = 0; ADJ.offs = {};
+  // universal: recarrega o enquadramento salvo desta imagem (se houver)
+  const hint = ADJ.ch === "universal" ? UNI.cropHints[ADJ.i] : null;
+  if (hint){
+    ADJ.offs = JSON.parse(JSON.stringify(hint.offs || {}));
+    ADJ.rot = hint.rot || 0;
+    const off = ADJ.offs[rk(ADJ.ratio)];
+    if (off){ ADJ.ox = off.ox; ADJ.oy = off.oy; }
+  }
+  $("adjRot").value = ADJ.rot; $("adjRotVal").textContent = ADJ.rot + "°";
   const img = new Image();
   img.onload = () => { URL.revokeObjectURL(img.src); ADJ.img = img; drawAdj(); };
   img.src = URL.createObjectURL(list[ADJ.i]);
@@ -1208,23 +1314,33 @@ function drawAdj(){
   const R = ADJ.ratio || (img.naturalWidth / img.naturalHeight);  // 0 = original
   cv.width = 1080;                              // largura padrão de export (IG)
   cv.height = Math.round(1080 / R);
-  const W = cv.width, H = cv.height, sw = img.naturalWidth, sh = img.naturalHeight;
+  const W = cv.width, H = cv.height;
   ctx.clearRect(0, 0, W, H);
+  // fonte do preencher/esticar: a imagem inteira, ou o recorte do modo Cortar
+  // ("sobre o recorte") — que já sai girado, então rot zera pra não dobrar.
+  const useCrop = ADJ.useCrop && ADJ.mode !== "crop";
+  const src = useCrop ? cropSource() : img;
+  const sw = useCrop ? src.width : img.naturalWidth;
+  const sh = useCrop ? src.height : img.naturalHeight;
+  const rot = useCrop ? 0 : ADJ.rot;
   if (ADJ.mode === "stretch"){
-    ctx.drawImage(img, 0, 0, W, H);
+    // estica a fonte (girada) até cobrir o quadro inteiro, distorcendo
+    const rad = rot * Math.PI / 180;
+    const c = Math.abs(Math.cos(rad)), s = Math.abs(Math.sin(rad));
+    const needW = W * c + H * s, needH = W * s + H * c;
+    ctx.save();
+    ctx.translate(W / 2, H / 2); ctx.rotate(rad);
+    ctx.drawImage(src, -needW / 2, -needH / 2, needW, needH);
+    ctx.restore();
   } else if (ADJ.mode === "fill"){
-    const cover = Math.max(W / sw, H / sh);     // fundo: cover borrado + véu
-    ctx.filter = "blur(40px)";
-    ctx.drawImage(img, (W - sw * cover) / 2, (H - sh * cover) / 2, sw * cover, sh * cover);
+    ctx.filter = "blur(40px)";                  // fundo: cover borrado + véu
+    drawCover(ctx, src, sw, sh, W, H, 0.5, 0.5, rot);
     ctx.filter = "none";
     ctx.fillStyle = "rgba(0,0,0,.15)";
     ctx.fillRect(0, 0, W, H);
-    const fit = Math.min(W / sw, H / sh);       // frente: contain
-    ctx.drawImage(img, (W - sw * fit) / 2, (H - sh * fit) / 2, sw * fit, sh * fit);
+    drawContain(ctx, src, sw, sh, W, H, rot);   // frente: contain
   } else {                                      // crop: cover com offset arrastável
-    const cover = Math.max(W / sw, H / sh);
-    const dw = sw * cover, dh = sh * cover;
-    ctx.drawImage(img, (W - dw) * ADJ.ox, (H - dh) * ADJ.oy, dw, dh);
+    drawCover(ctx, src, sw, sh, W, H, ADJ.ox, ADJ.oy, ADJ.rot);
   }
   updateAdjMulti();
 }
@@ -1254,7 +1370,9 @@ function updateAdjMulti(){
   const label = document.createElement("div");
   label.className = "hint";
   label.style.width = "100%";
-  label.textContent = "Como fica em cada canal (recorte central na proporção ⭐ ao derivar):"
+  label.textContent = (ADJ.mode === "crop"
+    ? "Como fica em cada canal ao derivar (enquadramento do chip de cada proporção):"
+    : "Como fica em cada canal (recorte central na proporção ⭐ ao derivar):")
     + (ADJ.mode === "fill"
        ? " ⚠️ o fundo borrado do preencher vira parte da imagem — ao derivar, o recorte corta dentro dele."
        : "");
@@ -1272,9 +1390,16 @@ function updateAdjMulti(){
     cv.style.width = Math.round(cv.width / dpr) + "px";
     const ctx = cv.getContext("2d");
     ctx.imageSmoothingQuality = "high";
-    const cover = Math.max(cv.width / src.width, cv.height / src.height);
-    const dw = src.width * cover, dh = src.height * cover;
-    ctx.drawImage(src, (cv.width - dw) / 2, (cv.height - dh) / 2, dw, dh);
+    if (ADJ.mode === "crop"){
+      // espelha o derivar: recorta a ORIGINAL com o enquadramento salvo pra
+      // esta proporção (o chip ativo mostra o arrasto ao vivo)
+      const off = ADJ.offs[rk(gr.ratio)] || { ox: 0.5, oy: 0.5 };
+      drawCover(ctx, ADJ.img, ADJ.img.naturalWidth, ADJ.img.naturalHeight,
+                cv.width, cv.height, off.ox, off.oy, ADJ.rot);
+    } else {
+      // preencher/esticar viram o arquivo — o derivar recorta o RESULTADO
+      drawCover(ctx, src, src.width, src.height, cv.width, cv.height, 0.5, 0.5, 0);
+    }
     cv.style.borderRadius = "4px";
     const cell = document.createElement("div");
     cell.style.textAlign = "center";
@@ -1291,6 +1416,18 @@ function updateAdjMulti(){
 function applyAdj(){
   const list = chFileList(ADJ.ch);
   const old = list[ADJ.i];
+  // Universal + Cortar: NÃO gera arquivo — salva o enquadramento por proporção
+  // e o Derivar recorta cada canal com ele (a matriz publica a original).
+  if (ADJ.ch === "universal" && ADJ.mode === "crop"){
+    ADJ.offs[rk(ADJ.ratio)] = { ox: ADJ.ox, oy: ADJ.oy };
+    UNI.cropHints[ADJ.i] = { offs: { ...ADJ.offs }, rot: ADJ.rot };
+    const res = $("f-universal-result");
+    res.className = "result ok";
+    res.textContent = `✂️ Enquadramentos da imagem ${ADJ.i + 1} salvos — o Derivar recorta cada canal com eles.`;
+    if (ADJ.i < list.length - 1){ ADJ.i++; loadAdjImage(); }
+    else closeAdjuster();
+    return;
+  }
   $("adjCanvas").toBlob(blob => {
     if (!blob) return;
     const name = (old.name || "img").replace(/\.[^.]+$/, "") + "-ajustada.jpg";
@@ -1304,6 +1441,7 @@ function applyAdj(){
       UNI.files[ADJ.i] = nf;
       UNI.urls.forEach(URL.revokeObjectURL);
       UNI.urls = UNI.files.map(f => URL.createObjectURL(f));
+      UNI.cropHints[ADJ.i] = null;   // os pixels mudaram — enquadramento antigo já era
       if (cur === "universal") chRender("universal");
     } else {
       ST[ADJ.ch].files[ADJ.i] = nf;
@@ -1330,16 +1468,38 @@ let adjDrag = null;
     if (!adjDrag || !ADJ.img) return;
     const rect = cv.getBoundingClientRect();
     const W = cv.width, H = cv.height;
-    const cover = Math.max(W / ADJ.img.naturalWidth, H / ADJ.img.naturalHeight);
-    const spanX = ADJ.img.naturalWidth * cover - W, spanY = ADJ.img.naturalHeight * cover - H;
-    if (spanX > 0) ADJ.ox = clamp01(adjDrag.ox - (e.clientX - adjDrag.x) * (W / rect.width) / spanX);
-    if (spanY > 0) ADJ.oy = clamp01(adjDrag.oy - (e.clientY - adjDrag.y) * (H / rect.height) / spanY);
+    const g = coverGeom(ADJ.img.naturalWidth, ADJ.img.naturalHeight, W, H, ADJ.rot);
+    // delta do dedo em px do canvas, levado pro referencial da imagem girada
+    const dx = (e.clientX - adjDrag.x) * (W / rect.width);
+    const dy = (e.clientY - adjDrag.y) * (H / rect.height);
+    const dxi = dx * Math.cos(g.rad) + dy * Math.sin(g.rad);
+    const dyi = -dx * Math.sin(g.rad) + dy * Math.cos(g.rad);
+    if (g.sx > 0) ADJ.ox = clamp01(adjDrag.ox - dxi / g.sx);
+    if (g.sy > 0) ADJ.oy = clamp01(adjDrag.oy - dyi / g.sy);
+    ADJ.offs[rk(ADJ.ratio)] = { ox: ADJ.ox, oy: ADJ.oy };
     drawAdj();
   });
   ["pointerup", "pointercancel"].forEach(ev => cv.addEventListener(ev, () => adjDrag = null));
   $("adjModes").querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
-    ADJ.mode = b.dataset.mode; syncModeBtns(); drawAdj();
+    ADJ.mode = b.dataset.mode;
+    if (ADJ.mode === "crop"){   // voltou pro Cortar: retoma o enquadramento do chip
+      ADJ.cropRatio = ADJ.ratio;
+      const off = ADJ.offs[rk(ADJ.ratio)] || { ox: 0.5, oy: 0.5 };
+      ADJ.ox = off.ox; ADJ.oy = off.oy;
+    }
+    syncModeBtns(); drawAdj();
   }));
+  $("adjRot").addEventListener("input", () => {
+    ADJ.rot = +$("adjRot").value;
+    $("adjRotVal").textContent = ADJ.rot + "°";
+    drawAdj();
+  });
+  $("adjRotReset").addEventListener("click", () => {
+    ADJ.rot = 0; $("adjRot").value = 0; $("adjRotVal").textContent = "0°"; drawAdj();
+  });
+  $("adjUseCrop").addEventListener("change", () => {
+    ADJ.useCrop = $("adjUseCrop").checked; drawAdj();
+  });
   $("adjPrev").addEventListener("click", () => { if (ADJ.i > 0){ ADJ.i--; loadAdjImage(); } });
   $("adjNext").addEventListener("click", () => {
     if (ADJ.i < chFileList(ADJ.ch).length - 1){ ADJ.i++; loadAdjImage(); } });
