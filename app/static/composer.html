@@ -1511,8 +1511,37 @@ function drawAdj(){
     drawContain(ctx, src, sw, sh, W, H, rot);   // frente: contain
   } else {                                      // crop: cover com offset arrastável
     drawCover(ctx, src, sw, sh, W, H, ADJ.ox, ADJ.oy, ADJ.rot, ADJ.zoom);
+    drawGridGuide(ctx, W, H);
   }
   updateAdjMulti();
+}
+
+// Guia da GRADE DO PERFIL do Instagram: desde 2025 a grade corta todo post
+// pro centro 3:4 (a API só aceita de 4:5 a 1.91:1, então não dá pra postar
+// 3:4 nativo) — mantenha o essencial entre as linhas. Só no modo Cortar,
+// cujo canvas é sempre preview (nunca vira arquivo — o hint re-renderiza).
+function drawGridGuide(ctx, W, H){
+  const igStar = chRatio("instagram") || 0.8;
+  const forIG = ADJ.ch === "instagram" ||
+    (ADJ.ch === "universal" && Math.abs((ADJ.ratio || 0) - igStar) < 1e-3);
+  if (!forIG || W / H <= 0.75 + 1e-3) return;
+  const gw = H * 0.75, x0 = (W - gw) / 2;
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,.28)";
+  ctx.fillRect(0, 0, x0, H);
+  ctx.fillRect(x0 + gw, 0, W - x0 - gw, H);
+  ctx.strokeStyle = "rgba(255,255,255,.9)";
+  ctx.setLineDash([14, 10]); ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x0, 0); ctx.lineTo(x0, H);
+  ctx.moveTo(x0 + gw, 0); ctx.lineTo(x0 + gw, H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font = "26px system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,.95)";
+  ctx.textAlign = "center";
+  ctx.fillText("grade do perfil (3:4)", W / 2, 36);
+  ctx.restore();
 }
 
 // Na aba universal: tira de mini-previews mostrando como o estado ATUAL do
