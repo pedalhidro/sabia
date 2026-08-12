@@ -25,11 +25,21 @@ PROMPT = (
 )
 
 
-def suggest_alt(data: bytes, mime: str = "image/jpeg") -> str:
-    """Descreve a imagem com o Haiku e devolve o alt sugerido (1 frase)."""
+def suggest_alt(data: bytes, mime: str = "image/jpeg", context: str = "") -> str:
+    """Descreve a imagem com o Haiku e devolve o alt sugerido (1 frase).
+    context = texto do anúncio (legenda/blocos): ajuda a NOMEAR o que aparece
+    (passeio, praça, córrego) — mas o alt descreve o que se VÊ, sem repetir a
+    legenda (leitores de tela leem as duas coisas; alt redundante atrapalha)."""
     if not Config.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY não definido — sugestão de alt desativada.")
     import anthropic  # import tardio: a app sobe mesmo sem o pacote/chave
+
+    prompt = PROMPT
+    if context.strip():
+        prompt += ("\n\nContexto (o texto do anúncio que acompanha a imagem — "
+                   "use só pra identificar nomes/lugares do que aparece na "
+                   "imagem; NÃO repita o texto do anúncio no alt):\n"
+                   + context.strip()[:1000])
 
     client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
     response = client.messages.create(
@@ -41,7 +51,7 @@ def suggest_alt(data: bytes, mime: str = "image/jpeg") -> str:
                 {"type": "image",
                  "source": {"type": "base64", "media_type": mime or "image/jpeg",
                             "data": base64.standard_b64encode(data).decode("ascii")}},
-                {"type": "text", "text": PROMPT},
+                {"type": "text", "text": prompt},
             ],
         }],
     )

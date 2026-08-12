@@ -109,16 +109,17 @@ def list_announcements(channel: str) -> JSONResponse:
 
 
 @app.post("/api/alt-suggest")
-async def alt_suggest(image: UploadFile = File(...)) -> JSONResponse:
+async def alt_suggest(image: UploadFile = File(...), context: str = Form("")) -> JSONResponse:
     """Sugere texto alternativo pra UMA imagem (Claude Haiku). A UI manda a
-    versão reduzida (≤512px); a sugestão volta editável — nada é publicado."""
+    versão reduzida (≤512px) + o texto do anúncio como contexto (ajuda a
+    nomear o que aparece); a sugestão volta editável — nada é publicado."""
     if not Config.ANTHROPIC_API_KEY:
         return JSONResponse(
             {"ok": False, "error": "Sugestão de alt não configurada — defina ANTHROPIC_API_KEY."},
             status_code=503)
     data = await image.read()
     try:
-        alt = alt_ai.suggest_alt(data, image.content_type or "image/jpeg")
+        alt = alt_ai.suggest_alt(data, image.content_type or "image/jpeg", context=context)
     except Exception as exc:  # noqa: BLE001 — erro do provedor vira 422 legível
         log.warning("alt-suggest falhou: %s", exc)
         return JSONResponse({"ok": False, "error": f"Sugestão falhou: {exc}"}, status_code=422)

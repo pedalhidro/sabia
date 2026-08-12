@@ -480,8 +480,9 @@ check("universal: matriz sumiu; derivado FICA com o prov",
 print("\n9) sugestão de alt-text por IA (/api/alt-suggest)")
 import alt_ai  # noqa: E402
 alt_ai_called = {}
-def fake_suggest(data, mime="image/jpeg"):
+def fake_suggest(data, mime="image/jpeg", context=""):
     alt_ai_called["bytes"] = len(data)
+    alt_ai_called["context"] = context
     return "grupo de ciclistas atravessa ponte sobre córrego urbano"
 import main as main_mod  # noqa: E402
 main_mod.alt_ai.suggest_alt = fake_suggest

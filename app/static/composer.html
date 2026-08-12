@@ -1102,6 +1102,7 @@ function renderAlts(k){
     try {
       const small = await downscaleForAlt(fileList[i]);
       const fd = new FormData(); fd.append("image", small);
+      fd.append("context", altContext(k));   // texto do anúncio ajuda a nomear o que aparece
       const j = await respJson(await fetch("/api/alt-suggest", { method: "POST", body: fd }));
       if (j.ok){
         altList[i] = j.alt;
@@ -1110,6 +1111,15 @@ function renderAlts(k){
       } else if (resBox){ resBox.className = "result err"; resBox.textContent = "Erro na sugestão: " + j.error; }
     } finally { btn.disabled = false; btn.textContent = "✨"; }
   }));
+}
+
+// O texto do anúncio da aba atual, como contexto da sugestão de alt.
+function altContext(k){
+  if (k === "universal") return uniBlocks().join(" ");
+  if (k === "instagram") return $("caption").value;
+  const title = CH[k] && CH[k].hasTitle && $(`f-${k}-title`) ? $(`f-${k}-title`).value : "";
+  const text = $(`f-${k}-text`) ? $(`f-${k}-text`).value : "";
+  return (title ? title + " — " : "") + text;
 }
 
 // Versão reduzida SÓ pra sugestão de alt: ≤512px no lado maior mantém o custo
