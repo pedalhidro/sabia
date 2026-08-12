@@ -100,6 +100,29 @@ ph:AnnouncementImageShape a sh:NodeShape ;
         sh:message "Se declarada, schema:height é a altura em pixels (inteiro)."@pt ;
     ] .
 
+# Texto alternativo (acessibilidade) — shape PRÓPRIA, de propósito separada da
+# ph:AnnouncementImageShape: aquela é referenciada via sh:node pelos canais, e
+# sh:node exige conformidade TOTAL — até uma Warning lá dentro derrubaria a
+# conformidade e viraria Violation no canal. Aqui, com sh:targetClass próprio,
+# a Warning fica Warning (ideal em todo canal; no Mastodon é obrigatório —
+# ver ph:MastodonImageAltShape).
+ph:AnnouncementImageAltTextShape a sh:NodeShape ;
+    sh:targetClass ph:AnnouncementImage ;
+    sh:property [
+        sh:path schema:description ;
+        sh:severity sh:Warning ;
+        sh:minCount 1 ;
+        sh:message "Ideal: texto alternativo na imagem (schema:description) — leitores de tela dependem dele."@pt ;
+    ] ;
+    sh:property [
+        sh:path schema:description ;
+        sh:severity sh:Violation ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:maxLength 1500 ;
+        sh:message "Se declarado, o texto alternativo (schema:description) é UM literal de até 1500 caracteres (limite do Mastodon)."@pt ;
+    ] .
+
 # Vídeo de anúncio — mesmo espírito da imagem: só a URL obrigatória; tamanho e
 # formato opcionais (habilitam as checagens de espec. de mídia dos canais).
 ph:AnnouncementVideoShape a sh:NodeShape ;
@@ -682,6 +705,20 @@ ph:MastodonPostShape a sh:NodeShape ;
         sh:class ph:AnnouncementImage ;
         sh:node ph:AnnouncementImageShape ;
         sh:message "Toot aceita no máximo 4 imagens, em ordem, cada uma conformando a ph:AnnouncementImageShape."@pt ;
+    ] ;
+    # No Mastodon o texto alternativo NÃO é ideal, é exigência (ursal.zone):
+    # a Warning genérica da ph:AnnouncementImageShape vira Violation aqui.
+    sh:property [
+        sh:path ( schema:image [ sh:zeroOrMorePath rdf:rest ] rdf:first ) ;
+        sh:severity sh:Violation ;
+        sh:node ph:MastodonImageAltShape ;
+        sh:message "O ursal.zone exige texto alternativo: toda imagem do toot precisa de schema:description."@pt ;
+    ] .
+
+ph:MastodonImageAltShape a sh:NodeShape ;
+    sh:property [
+        sh:path schema:description ;
+        sh:minCount 1 ;
     ] .
 
 # Telegram: texto (obrigatório; ≤1024 — limite de legenda quando a mensagem

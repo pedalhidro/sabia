@@ -24,6 +24,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+import alt_ai
 import channels
 import storage
 import tokens
@@ -80,7 +81,9 @@ def get_config() -> dict:
             "media": ttl_store.media_specs(),
             # relógio do token de APAGAR (cacheado 6h) — a UI avisa quando o
             # acesso a dados estiver perto de expirar (renovação é manual).
-            "manage_token": tokens.manage_token_status_cached()}
+            "manage_token": tokens.manage_token_status_cached(),
+            # sugestão de alt-text por IA — a UI só mostra o ✨ se houver chave
+            "alt_ai": bool(Config.ANTHROPIC_API_KEY)}
 
 
 @app.post("/api/token-refresh")
@@ -103,6 +106,23 @@ def list_announcements(channel: str) -> JSONResponse:
     if channel not in ttl_store.CHANNELS:
         return JSONResponse({"error": f"Canal desconhecido: {channel}"}, status_code=400)
     return JSONResponse(ttl_store.channel_announcements(ttl_store.load_dataset(), channel))
+
+
+@app.post("/api/alt-suggest")
+async def alt_suggest(image: UploadFile = File(...)) -> JSONResponse:
+    """Sugere texto alternativo pra UMA imagem (Claude Haiku). A UI manda a
+    versão reduzida (≤512px); a sugestão volta editável — nada é publicado."""
+    if not Config.ANTHROPIC_API_KEY:
+        return JSONResponse(
+            {"ok": False, "error": "Sugestão de alt não configurada — defina ANTHROPIC_API_KEY."},
+            status_code=503)
+    data = await image.read()
+    try:
+        alt = alt_ai.suggest_alt(data, image.content_type or "image/jpeg")
+    except Exception as exc:  # noqa: BLE001 — erro do provedor vira 422 legível
+        log.warning("alt-suggest falhou: %s", exc)
+        return JSONResponse({"ok": False, "error": f"Sugestão falhou: {exc}"}, status_code=422)
+    return JSONResponse({"ok": True, "alt": alt})
 
 
 @app.post("/api/announcements/delete")
@@ -230,6 +250,7 @@ async def api_publish(
     request: Request,
     channel: str = Form("instagram"),
     images: List[UploadFile] = File(default=[]),
+    alts: List[str] = Form(default=[]),  # texto alternativo, alinhado com images
     caption: str = Form(""),
     text: str = Form(""),        # texto/corpo dos demais canais (caption = alias)
     title: str = Form(""),       # título (Reddit) / assunto (e-mail) / do universal
@@ -250,13 +271,14 @@ async def api_publish(
 ) -> JSONResponse:
     posted = is_posted.lower() in ("1", "true", "yes", "on")
     confirmed = confirm.lower() in ("1", "true", "yes", "on")
+    alts = [a.strip() for a in alts]
     if channel == "universal":
-        return await _record_universal(request, images, blocks, title)
+        return await _record_universal(request, images, blocks, title, alts)
     if channel != "instagram":
         return await _publish_channel(request, channel, images, text or caption,
                                       title, to, subreddit, posted, confirmed,
                                       derived_from, event_start, event_end,
-                                      event_location)
+                                      event_location, alts)
 
     if not images:
         return JSONResponse({"ok": False, "error": "No images provided."}, status_code=400)
@@ -320,6 +342,7 @@ async def api_publish(
         shortcode=shortcode,
         caption=caption,
         image_urls=image_urls,
+        image_alts=alts,
         tagged=tags,
         collaborators=collab,
         location_name=location_name or None,
@@ -340,7 +363,8 @@ async def api_publish(
 
 
 async def _record_universal(request: Request, images: List[UploadFile],
-                            blocks: List[str], title: str) -> JSONResponse:
+                            blocks: List[str], title: str,
+                            alts: List[str] = []) -> JSONResponse:
     """Grava a matriz do cross-post (ph:UniversalPost). NUNCA publica em rede:
     a derivação por canal acontece nas abas (a app corta texto na escada e
     recorta as imagens), e cada publicação leva prov:wasDerivedFrom pra cá."""
@@ -386,6 +410,7 @@ async def _record_universal(request: Request, images: List[UploadFile],
         title=title or None,
         image_urls=image_urls,
         image_meta=[(len(d), m) for _, d, m in blobs],
+        image_alts=alts,
     )
     check = ttl_store.validate(ttl)
     return JSONResponse({
@@ -402,7 +427,8 @@ async def _publish_channel(request: Request, channel: str, images: List[UploadFi
                            text: str, title: str, to: str, subreddit: str,
                            posted: bool, confirmed: bool,
                            derived_from: str = "", event_start: str = "",
-                           event_end: str = "", event_location: str = "") -> JSONResponse:
+                           event_end: str = "", event_location: str = "",
+                           alts: List[str] = []) -> JSONResponse:
     """Publica num canal ≠ Instagram e grava o anúncio na forma do shape dele."""
     spec = ttl_store.CHANNELS.get(channel)
     if spec is None:
@@ -440,6 +466,14 @@ async def _publish_channel(request: Request, channel: str, images: List[UploadFi
         return bad(f"Texto com {len(text)} caracteres — máximo do canal é {spec['max_text']}.")
     if title and len(title) > spec["max_title"]:
         return bad(f"Título com {len(title)} caracteres — máximo do canal é {spec['max_title']}.")
+    # Alt-text: Warning em todo canal; no Mastodon é exigência do ursal.zone —
+    # barra ANTES de subir imagem/publicar (espelha a Violation da shape).
+    if channel == "mastodon" and images:
+        filled = [a for a in alts[: len(images)] if a.strip()]
+        if len(filled) < len(images):
+            return bad("O Mastodon (ursal.zone) exige texto alternativo em TODAS "
+                       "as imagens do toot — preencha o campo Alt de cada uma.")
+
     is_video = spec["images"] == "video"
     if len(images) > spec["max_images"]:
         kind = "vídeo(s)" if is_video else "imagem(ns)"
@@ -486,7 +520,7 @@ async def _publish_channel(request: Request, channel: str, images: List[UploadFi
         try:
             pub = channels.publish(channel, text=text, title=title,
                                    image_urls=image_urls, blobs=blobs,
-                                   to=to, subreddit=subreddit,
+                                   alts=alts, to=to, subreddit=subreddit,
                                    event_start=event_start, event_end=event_end,
                                    location=event_location)
         except PublishError as exc:
@@ -501,6 +535,7 @@ async def _publish_channel(request: Request, channel: str, images: List[UploadFi
         title=title or None,
         image_urls=image_urls,
         image_meta=[(len(d), m) for _, d, m in blobs],
+        image_alts=alts,
         is_posted=posted,
         permalink=(pub.get("permalink") or None) if real else None,
         provider_id=(str(pub.get("id")) or None) if real else None,

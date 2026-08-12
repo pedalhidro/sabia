@@ -54,7 +54,7 @@ REQUIRED_ENV = {
 
 def publish(channel: str, *, text: str = "", title: str = "",
             image_urls: Sequence[str] = (), blobs: Sequence[Blob] = (),
-            to: str = "", subreddit: str = "",
+            alts: Sequence[str] = (), to: str = "", subreddit: str = "",
             event_start: str = "", event_end: str = "", location: str = "") -> dict:
     """Despacho único usado pela API. Devolve {"id", "permalink", "dry_run"}."""
     if Config.DRY_RUN:
@@ -64,8 +64,9 @@ def publish(channel: str, *, text: str = "", title: str = "",
         "reel": lambda: publish_reel(image_urls[0] if image_urls else "", text),
         "whatsapp": lambda: publish_whatsapp(text, list(image_urls)),
         "telegram": lambda: publish_telegram(text, list(image_urls)),
-        "mastodon": lambda: publish_mastodon(text, list(blobs)),
-        "reddit": lambda: publish_reddit(title, text, list(image_urls), subreddit=subreddit),
+        "mastodon": lambda: publish_mastodon(text, list(blobs), list(alts)),
+        "reddit": lambda: publish_reddit(title, text, list(image_urls),
+                                         subreddit=subreddit, alts=list(alts)),
         "email": lambda: publish_email(title, text, list(blobs), to=to),
         "gcal": lambda: publish_gcal(title, text, event_start=event_start,
                                      event_end=event_end, location=location),
@@ -161,10 +162,16 @@ def _http_json(method: str, url: str, *, headers: Optional[dict] = None,
         raise PublishError(f"{host} HTTP {exc.code}: {json.dumps(err, ensure_ascii=False)[:400]}")
 
 
-def _multipart(field: str, filename: str, content_type: str, data: bytes) -> tuple[bytes, str]:
-    """Corpo multipart/form-data de um único arquivo (upload de mídia)."""
+def _multipart(field: str, filename: str, content_type: str, data: bytes,
+               fields: Optional[dict] = None) -> tuple[bytes, str]:
+    """Corpo multipart/form-data de um arquivo + campos de texto opcionais
+    (ex.: o description/alt-text do upload de mídia do Mastodon)."""
     boundary = "phb" + secrets.token_hex(12)
     buf = bytearray()
+    for name, value in (fields or {}).items():
+        buf += (f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n').encode()
+        buf += str(value).encode() + b"\r\n"
     buf += (f"--{boundary}\r\n"
             f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
             f"Content-Type: {content_type}\r\n\r\n").encode()
@@ -224,17 +231,20 @@ def publish_telegram(text: str, image_urls: List[str]) -> dict:
 
 
 # ── Mastodon ──────────────────────────────────────────────────────────────────
-def publish_mastodon(text: str, blobs: List[Blob]) -> dict:
+def publish_mastodon(text: str, blobs: List[Blob], alts: Optional[List[str]] = None) -> dict:
     base = (Config.MASTODON_BASE_URL or "").rstrip("/")
     token = Config.MASTODON_ACCESS_TOKEN
     if not (base and token):
         raise PublishError(f"Mastodon não configurado — defina {REQUIRED_ENV['mastodon']}.")
     auth = {"Authorization": f"Bearer {token}"}
 
-    # 1) sobe cada imagem (o Mastodon não baixa URLs — precisa dos bytes)…
+    # 1) sobe cada imagem (o Mastodon não baixa URLs — precisa dos bytes),
+    #    com o texto alternativo no campo description (exigência do ursal.zone)…
     media_ids = []
-    for filename, data, ctype in blobs[:4]:
-        body, mp_type = _multipart("file", filename, ctype or "image/jpeg", data)
+    for i, (filename, data, ctype) in enumerate(blobs[:4]):
+        alt = (alts[i] if alts and i < len(alts) else "").strip()
+        body, mp_type = _multipart("file", filename, ctype or "image/jpeg", data,
+                                   fields={"description": alt} if alt else None)
         res, _ = _http_json("POST", f"{base}/api/v2/media",
                             headers={**auth, "Content-Type": mp_type}, data=body)
         media_ids.append(str(res["id"]))
@@ -264,7 +274,8 @@ def _wait_mastodon_media(base: str, auth: dict, media_id: str,
 
 
 # ── Reddit ────────────────────────────────────────────────────────────────────
-def publish_reddit(title: str, body: str, image_urls: List[str], *, subreddit: str = "") -> dict:
+def publish_reddit(title: str, body: str, image_urls: List[str], *,
+                   subreddit: str = "", alts: Optional[List[str]] = None) -> dict:
     sub = (subreddit or Config.REDDIT_SUBREDDIT).removeprefix("/").removeprefix("r/").strip("/")
     cid, csecret = Config.REDDIT_CLIENT_ID, Config.REDDIT_CLIENT_SECRET
     user, pwd = Config.REDDIT_USERNAME, Config.REDDIT_PASSWORD
@@ -282,11 +293,15 @@ def publish_reddit(title: str, body: str, image_urls: List[str], *, subreddit: s
         raise PublishError(f"Reddit não deu token: {json.dumps(tok, ensure_ascii=False)[:300]}")
 
     # Post de texto; imagens viram links no corpo (upload nativo = lease S3, fora
-    # do escopo). O corpo ARMAZENADO no .ttl é só o texto — os links são extra.
+    # do escopo). O texto do link leva o alt quando houver — acessibilidade de
+    # graça. O corpo ARMAZENADO no .ttl é só o texto — os links são extra.
     text = body or ""
     if image_urls:
+        def label(i: int) -> str:
+            alt = (alts[i - 1] if alts and i - 1 < len(alts) else "").strip()
+            return f"Foto {i} — {alt}" if alt else f"Foto {i}"
         text += ("\n\n" if text else "") + "\n".join(
-            f"[Foto {i}]({u})" for i, u in enumerate(image_urls, 1))
+            f"[{label(i)}]({u})" for i, u in enumerate(image_urls, 1))
     res, _ = _http_json("POST", "https://oauth.reddit.com/api/submit",
                         headers={**ua, "Authorization": f"Bearer {token}"},
                         data=urllib.parse.urlencode(

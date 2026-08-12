@@ -77,6 +77,10 @@ class Config:
     GCAL_CALENDAR_ID = os.environ.get("GCAL_CALENDAR_ID", "")
     GCAL_TIMEZONE = os.environ.get("GCAL_TIMEZONE", "America/Sao_Paulo")
 
+    # Sugestão de alt-text por IA (Claude Haiku, ~US$0,001/imagem). Opcional:
+    # sem a chave o botão ✨ some da UI e o endpoint responde 503.
+    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
     # Storage: GCS bucket when set (Cloud Run), else local ./uploads (testing).
     GCS_BUCKET = os.environ.get("GCS_BUCKET", "")
     LOCAL_UPLOAD_DIR = Path(os.environ.get("LOCAL_UPLOAD_DIR", REPO_ROOT / "app" / "uploads"))

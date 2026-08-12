@@ -193,6 +193,7 @@ def add_published_post(
     shortcode: str,
     caption: str,
     image_urls: List[str],
+    image_alts: Optional[Sequence[str]] = None,
     tagged: Optional[List[str]] = None,
     collaborators: Optional[List[str]] = None,
     location_name: Optional[str] = None,
@@ -220,6 +221,14 @@ def add_published_post(
 
     iri = ttl_common.post_iri(shortcode)
     g.add((iri, PH.managedByApp, Literal(True)))  # ownership: published via this app
+    # Texto alternativo: o ttl_common monta a lista de imagens; anota depois,
+    # membro a membro (a Graph API do IG não aceita alt — fica só no registro).
+    if image_alts:
+        head = g.value(iri, SCHEMA.image)
+        if head is not None:
+            for i, member in enumerate(Collection(g, head)):
+                if i < len(image_alts) and (image_alts[i] or "").strip():
+                    g.add((member, SCHEMA.description, Literal(image_alts[i].strip())))
     if media_id:
         g.add((iri, PH.instagramMediaId, Literal(media_id)))
     if permalink:
@@ -241,6 +250,7 @@ def add_channel_announcement(
     title: Optional[str] = None,
     image_urls: Sequence[str] = (),
     image_meta: Optional[Sequence[tuple]] = None,  # [(bytes, mime)] alinhado c/ urls
+    image_alts: Optional[Sequence[str]] = None,    # texto alternativo, alinhado c/ urls
     is_posted: bool = True,
     permalink: Optional[str] = None,
     derived_from: Optional[str] = None,  # IRI do ph:UniversalPost de origem
@@ -296,6 +306,10 @@ def add_channel_announcement(
                 g.add((img, SCHEMA.contentSize, Literal(int(size))))
             if mime:
                 g.add((img, SCHEMA.encodingFormat, Literal(mime)))
+        # Texto alternativo (acessibilidade): Warning se faltar; no Mastodon,
+        # Violation (ursal.zone exige) — ver shapes.ttl.
+        if image_alts and i - 1 < len(image_alts) and (image_alts[i - 1] or "").strip():
+            g.add((img, SCHEMA.description, Literal(image_alts[i - 1].strip())))
         imgs.append(img)
     if imgs:
         if is_video:                      # Reel: UM vídeo em schema:video
@@ -322,6 +336,7 @@ def add_universal_post(
     title: Optional[str] = None,
     image_urls: Sequence[str] = (),
     image_meta: Optional[Sequence[tuple]] = None,
+    image_alts: Optional[Sequence[str]] = None,
     when: Optional[datetime] = None,
 ) -> tuple:
     """Grava a MATRIZ do cross-post (ph:UniversalPost): blocos de texto em
@@ -350,6 +365,8 @@ def add_universal_post(
                 g.add((img, SCHEMA.contentSize, Literal(int(size))))
             if mime:
                 g.add((img, SCHEMA.encodingFormat, Literal(mime)))
+        if image_alts and i - 1 < len(image_alts) and (image_alts[i - 1] or "").strip():
+            g.add((img, SCHEMA.description, Literal(image_alts[i - 1].strip())))
         imgs.append(img)
     if imgs:
         ihead = BNode()
@@ -380,6 +397,10 @@ def universal_posts(g: rdflib.Graph) -> List[dict]:
             "permalink": "",
             "is_posted": True,   # a matriz não é postada em si — sem pílula de rascunho
             "thumb": str(thumb) if thumb else None,
+            # A matriz é só registro (nunca vai pra rede): apaga sempre, como
+            # rascunho. Os anúncios derivados FICAM — o prov:wasDerivedFrom
+            # deles passa a apontar pra um IRI sem descrição, o que é válido.
+            "deletable": True,
         })
     out.sort(key=lambda p: p["date"], reverse=True)
     return out
@@ -422,8 +443,13 @@ def channel_announcements(g: rdflib.Graph, channel: str) -> List[dict]:
 
 
 def find_announcement(g: rdflib.Graph, iri: str):
-    """(canal, {posted, provider_id, date}) do anúncio, ou (None, None)."""
+    """(canal, {posted, provider_id, date}) do anúncio, ou (None, None).
+    A matriz universal responde como "universal" com posted=False — nunca foi
+    pra rede, então apagar é só tirar o registro (fluxo de rascunho)."""
     s = URIRef(iri)
+    if (s, RDF.type, PH.UniversalPost) in g:
+        return "universal", {"posted": False, "provider_id": None,
+                             "date": g.value(s, DCTERMS.date)}
     for channel, spec in CHANNELS.items():
         if (s, RDF.type, spec["cls"]) in g:
             pid = g.value(s, PH.providerMessageId)
@@ -437,9 +463,18 @@ def find_announcement(g: rdflib.Graph, iri: str):
 
 def remove_announcement(g: rdflib.Graph, iri: str, channel: str) -> None:
     """Apaga o nó do anúncio e as mídias dele, na forma do canal (lista RDF,
-    nó único, conjunto ou vídeo) — o remove_post cobre só o caso lista (IG)."""
-    spec = CHANNELS[channel]
+    nó único, conjunto ou vídeo) — o remove_post cobre só o caso lista (IG).
+    "universal" apaga a matriz: blocos (células BNode saem no cbd) + imagens."""
     s = URIRef(iri)
+    if channel == "universal":
+        head = g.value(s, SCHEMA.image)
+        media = list(Collection(g, head)) if head is not None else []
+        g -= g.cbd(s)                   # nó + listas (textBlocks e imagens)
+        for m in media:
+            for t in list(g.triples((m, None, None))):
+                g.remove(t)
+        return
+    spec = CHANNELS[channel]
     if spec["images"] == "list":
         head = g.value(s, SCHEMA.image)
         media = list(Collection(g, head)) if head is not None else []

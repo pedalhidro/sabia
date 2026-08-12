@@ -14,6 +14,14 @@ canal, cada uma com **preview ao vivo**, limites e validação próprios:
 | E-mail | SMTP | assunto ≤255 + corpo | anexos |
 | Agenda | Google Calendar API v3 (evento na agenda que o [calendario.pedalhidrografi.co](https://calendario.pedalhidrografi.co) exibe) | título ≤255 + descrição ≤2150 + início/fim/local | — |
 
+**Texto alternativo (acessibilidade):** cada imagem tem um campo Alt
+(`schema:description` no RDF) — ideal em todo canal (Aviso SHACL) e
+**obrigatório no Mastodon** (Violação; regra do ursal.zone — vai no
+`description` do upload de mídia). No Reddit o alt entra no texto do link da
+foto. Com `ANTHROPIC_API_KEY` configurada, o botão ✨ sugere o alt via Claude
+Haiku (~US$0,001/imagem; a sugestão sai com "(gerado por Claude Haiku 4.5)"
+e fica editável).
+
 ## O post universal (🌐, a primeira aba)
 
 A matriz do cross-posting (`ph:UniversalPost` + `ph:UniversalPostShape`):
@@ -101,6 +109,7 @@ lista do que falta).
 | Reddit | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USERNAME`, `REDDIT_PASSWORD`, `REDDIT_SUBREDDIT` (app tipo "script" em reddit.com/prefs/apps) |
 | E-mail | `SMTP_HOST`, `SMTP_PORT` (587; 465 = SSL), `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, `EMAIL_TO` (vírgulas separam) |
 | Agenda | `GCAL_CALENDAR_ID` (id `…@group.calendar.google.com` da agenda do grupo), `GCAL_TIMEZONE` (padrão `America/Sao_Paulo`). **Sem token**: a credencial é ADC — na Cloud Run, compartilhe a agenda com a SA de runtime ("Fazer alterações em eventos"); localmente, `gcloud auth application-default login` |
+| ✨ Alt por IA | `ANTHROPIC_API_KEY` (console.anthropic.com) — opcional; sem ela o botão some e o resto funciona normal |
 
 ## Cloud Run
 

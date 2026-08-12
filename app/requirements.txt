@@ -7,5 +7,7 @@ python-multipart>=0.0.9
 rdflib>=7.6
 pyparsing>=3.2
 google-cloud-storage>=2.16
+# sugestão de alt-text por IA (opcional em runtime — só usado com ANTHROPIC_API_KEY)
+anthropic>=0.116
 # optional: live SHACL check after each publish
 pyshacl>=0.31

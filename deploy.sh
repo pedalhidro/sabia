@@ -49,7 +49,7 @@ upsert_secret() {
 # var minúscula com dashes). Canal sem var no .env fica "não configurado" na app.
 CHANNEL_SECRET_VARS="WHAPI_TOKEN TELEGRAM_BOT_TOKEN MASTODON_ACCESS_TOKEN \
 REDDIT_CLIENT_ID REDDIT_CLIENT_SECRET REDDIT_USERNAME REDDIT_PASSWORD \
-SMTP_USER SMTP_PASSWORD"
+SMTP_USER SMTP_PASSWORD ANTHROPIC_API_KEY"
 # Vars NÃO-sensíveis dos canais (alvos/endereços) → env vars comuns.
 # GCAL_*: a Agenda não tem secret — a credencial é a própria SA de runtime
 # (compartilhe a agenda com ela; o final do deploy lembra o e-mail).

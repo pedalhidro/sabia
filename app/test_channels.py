@@ -40,6 +40,7 @@ os.environ.update(
     SMTP_HOST="smtp.example", SMTP_PORT="587", SMTP_USER="mail",
     SMTP_PASSWORD="pw", EMAIL_FROM="ph@example.org", EMAIL_TO="lista@example.org",
     GCAL_CALENDAR_ID="agenda-fake@group.calendar.google.com",
+    ANTHROPIC_API_KEY="sk-fake",
 )
 sys.path.insert(0, str(APP))
 
@@ -214,10 +215,18 @@ tg = next(g.subjects(RDF.type, PH.TelegramMessage))
 check("telegram: imagens em lista RDF ordenada",
       len(list(Collection(g, g.value(tg, SCHEMA.image)))) == 3)
 
-r = publish("mastodon", text="Toot do passeio", images=2)
+r = publish("mastodon", text="Toot do passeio", images=2,
+            alts=["grupo pedala à beira do córrego", "cartaz do passeio com data e local"])
 check("mastodon publica", r.status_code == 200 and r.json()["ok"], r.text[:120])
 check("mastodon: subiu mídia antes do status",
       any("v2/media" in u for u, _ in CALLS) and any("v1/statuses" in u for u, _ in CALLS))
+check("mastodon: alt foi no description do upload",
+      any("v2/media" in u and "description" in b and "córrego" in b for u, b in CALLS))
+g = dataset()
+masto = next(g.subjects(RDF.type, PH.MastodonPost))
+first_img = next(iter(Collection(g, g.value(masto, SCHEMA.image))))
+check("mastodon: alt gravado em schema:description",
+      str(g.value(first_img, SCHEMA.description) or "").startswith("grupo pedala"))
 
 r = publish("reddit", title="Pedal das águas", text="Detalhes do passeio", images=1)
 check("reddit publica", r.status_code == 200 and r.json()["ok"], r.text[:120])
@@ -271,6 +280,12 @@ r = publish("gcal", title="Fim antes", event_start="2026-08-16T08:00", event_end
 check("gcal com fim antes do início → 400", r.status_code == 400, f"got {r.status_code}")
 r = publish("gcal", text="sem título", event_start="2026-08-16T08:00")
 check("gcal sem título → 400", r.status_code == 400, f"got {r.status_code}")
+r = publish("mastodon", text="toot sem alt", images=1)
+check("mastodon com imagem SEM alt → 400", r.status_code == 400
+      and "alternativo" in r.text, r.text[:140])
+r = publish("whatsapp", text="whatsapp sem alt passa (Warning só)", images=1)
+check("whatsapp sem alt → 200 (alt é ideal, não exigência)",
+      r.status_code == 200 and r.json()["validation"]["conforms"], r.text[:140])
 
 print("\n3) travas de publicação ao vivo")
 r = publish("whatsapp", text="oi", confirm=False)
@@ -448,6 +463,38 @@ check("rascunho: apaga sem rede", r.status_code == 200 and len(CALLS) == n, r.te
 
 check("SHACL do dataset segue conforme após os deletes",
       publish("telegram", text="sanidade final").json()["validation"]["conforms"])
+
+# a matriz universal apaga sempre (é só registro; nada na rede)
+items = client.get("/api/announcements", params={"channel": "universal"}).json()
+check("universal vem deletable", items and items[0]["deletable"] is True, str(items[:1]))
+n = len(CALLS)
+r = delete_ann(items[0]["iri"])
+check("universal: apaga sem rede", r.status_code == 200 and r.json()["ok"]
+      and len(CALLS) == n, r.text[:120])
+g = dataset()
+check("universal: matriz sumiu; derivado FICA com o prov",
+      (rdflib.URIRef(items[0]["iri"]), None, None) not in g
+      and any(True for _ in g.subjects(rdflib.Namespace("http://www.w3.org/ns/prov#").wasDerivedFrom,
+                                       rdflib.URIRef(items[0]["iri"]))))
+
+print("\n9) sugestão de alt-text por IA (/api/alt-suggest)")
+import alt_ai  # noqa: E402
+alt_ai_called = {}
+def fake_suggest(data, mime="image/jpeg"):
+    alt_ai_called["bytes"] = len(data)
+    return "grupo de ciclistas atravessa ponte sobre córrego urbano"
+import main as main_mod  # noqa: E402
+main_mod.alt_ai.suggest_alt = fake_suggest
+r = client.post("/api/alt-suggest", files={"image": ("f.png", PNG, "image/png")})
+check("sugere alt e responde 200", r.status_code == 200
+      and "ciclistas" in r.json().get("alt", ""), r.text[:140])
+check("recebeu os bytes da imagem", alt_ai_called.get("bytes", 0) > 0)
+from config import Config as _Cfg  # noqa: E402
+_old_key = _Cfg.ANTHROPIC_API_KEY
+_Cfg.ANTHROPIC_API_KEY = ""
+r = client.post("/api/alt-suggest", files={"image": ("f.png", PNG, "image/png")})
+check("sem ANTHROPIC_API_KEY → 503", r.status_code == 503, f"got {r.status_code}")
+_Cfg.ANTHROPIC_API_KEY = _old_key
 
 print("\n" + ("TUDO PASSOU" if not FAILURES else f"{len(FAILURES)} FALHAS: {FAILURES}"))
 sys.exit(1 if FAILURES else 0)

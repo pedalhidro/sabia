@@ -209,6 +209,7 @@
         <label>Imagens (1–10, na ordem)</label>
         <input type="file" id="images" accept="image/*" multiple />
         <div class="hint" id="imgHint">A ordem dos arquivos é a ordem do carrossel.</div>
+        <div class="altlist" id="ig-alts"></div>
         <div class="copyrow"><button id="adjust-instagram">✂️ Ajustar proporção das imagens</button></div>
 
         <label>Legenda <span class="count" id="capCount">0 / 2150</span></label>
@@ -333,10 +334,11 @@ const CH = {
               targetLabel:"Google Agenda (calendario.pedalhidrografi.co)" },
 };
 const ORDER = ["universal", "instagram", "reel", "whatsapp", "telegram", "mastodon", "reddit", "email", "gcal"];
-const ST = {};                    // estado por canal (≠ IG/universal): {files, urls}
+const ST = {};                    // estado por canal (≠ IG/universal): {files, urls, alts}
 ORDER.filter(k => k !== "universal" && k !== "instagram")
-     .forEach(k => ST[k] = { files: [], urls: [] });
-const UNI = { files: [], urls: [] };   // imagens ORIGINAIS da matriz universal
+     .forEach(k => ST[k] = { files: [], urls: [], alts: [] });
+const UNI = { files: [], urls: [], alts: [] };  // imagens ORIGINAIS da matriz universal
+let igAlts = [];                  // alt-text das imagens do IG (paralelo a files)
 const DERIVED = {};               // canal → IRI do ph:UniversalPost de origem
 let cur = "universal";
 let DRY = true;                   // de /api/config
@@ -441,6 +443,7 @@ function buildUniversalPane(){
     <label>Imagens (até 20, na ordem)</label>
     <input type="file" id="f-universal-images" accept="image/*" multiple />
     <div class="hint" id="f-universal-imghint">Cada canal leva as primeiras que couberem, recortadas na proporção ⭐ dele ao derivar.</div>
+    <div class="altlist" id="f-universal-alts"></div>
     <div class="copyrow"><button id="adjust-universal">✂️ Ajustar proporção das imagens</button></div>
     <button class="publish" id="f-universal-go">🌐 Registrar e derivar pra todas as abas</button>
     <div class="hint">Isso grava o ph:UniversalPost e preenche as abas — NADA é publicado ainda;
@@ -456,6 +459,8 @@ function buildUniversalPane(){
     UNI.urls.forEach(URL.revokeObjectURL);
     UNI.files = Array.from(e.target.files).slice(0, 20);
     UNI.urls = UNI.files.map(f => URL.createObjectURL(f));
+    UNI.alts = UNI.files.map(() => "");
+    renderAlts("universal");
     $("f-universal-imghint").textContent =
       `${UNI.files.length} imagem(ns) — recortadas por canal ao derivar.`;
     uniUpdate();
@@ -484,14 +489,17 @@ function uniUpdate(){
 }
 
 // Recorte automático: cover centrado na proporção do canal, JPEG 1080px.
-// Sem ratio (e-mail) devolve o arquivo original.
+// Sem ratio (e-mail): mantém a proporção ORIGINAL mas ainda reencoda JPEG —
+// formato uniforme em todos os canais (um HEIC de iPhone quebrava só a aba
+// de e-mail enquanto as outras recebiam JPEG do recorte).
 function cropToRatio(file, ratio){
   return new Promise(res => {
-    if (!ratio || !file.type.startsWith("image/")) return res(file);
+    if (!file.type.startsWith("image/")) return res(file);
     const img = new Image();
     img.onload = () => {
       URL.revokeObjectURL(img.src);
-      const W = 1080, H = Math.round(1080 / ratio);
+      const r = ratio || (img.naturalWidth / img.naturalHeight);
+      const W = 1080, H = Math.round(1080 / r);
       const cv = document.createElement("canvas");
       cv.width = W; cv.height = H;
       const ctx = cv.getContext("2d");
@@ -499,7 +507,8 @@ function cropToRatio(file, ratio){
       const dw = img.naturalWidth * cover, dh = img.naturalHeight * cover;
       ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
       cv.toBlob(b => res(b
-        ? new File([b], file.name.replace(/\.[^.]+$/, "") + `-${ratioLabel(ratio).replace(":", "x")}.jpg`,
+        ? new File([b], file.name.replace(/\.[^.]+$/, "")
+                   + (ratio ? `-${ratioLabel(ratio).replace(":", "x")}` : "") + ".jpg",
                    { type: "image/jpeg" })
         : file), "image/jpeg", 0.92);
     };
@@ -528,6 +537,7 @@ async function deriveUniversal(){
   fd.append("title", title);
   blocks.forEach(b => fd.append("blocks", b));
   UNI.files.forEach(f => fd.append("images", f));
+  UNI.files.forEach((_, i) => fd.append("alts", UNI.alts[i] || ""));
   let j;
   try { j = await respJson(await fetch("/api/publish", { method: "POST", body: fd })); }
   catch (e){ btn.disabled = false; return err("Falha de rede: " + e); }
@@ -549,7 +559,8 @@ async function deriveUniversal(){
         urls.forEach(URL.revokeObjectURL);
         urls = files.map(f => URL.createObjectURL(f));
         idx = 0;
-        igMediaHints();
+        igAlts = UNI.alts.slice(0, files.length);
+        igMediaHints(); renderAlts("instagram");
       }
       render();
     } else {
@@ -561,7 +572,8 @@ async function deriveUniversal(){
         ST[k].files = await Promise.all(UNI.files.slice(0, c.maxImages).map(f =>
           cropToRatio(f, (CFG.media[k] || {}).recommended_ratio)));
         ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
-        mediaHints(k);
+        ST[k].alts = UNI.alts.slice(0, ST[k].files.length);
+        mediaHints(k); renderAlts(k);
       }
       chUpdate(k);
     }
@@ -625,6 +637,7 @@ function buildPane(k){
       <input type="file" id="f-${k}-images" multiple
              accept="${(media.image_formats || ["image/*"]).join(",")}" />
       <div class="hint" id="f-${k}-imghint">${specs.join(" · ")}</div>
+      <div class="altlist" id="f-${k}-alts"></div>
       <div class="copyrow"><button id="adjust-${k}">✂️ Ajustar proporção das imagens</button></div>`);
   }
   parts.push(`<div class="toggle">
@@ -667,7 +680,8 @@ function wirePane(k){
     ST[k].urls.forEach(URL.revokeObjectURL);
     ST[k].files = Array.from(e.target.files).slice(0, c.maxImages);
     ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
-    if (c.video) videoHints(k); else mediaHints(k);
+    ST[k].alts = ST[k].files.map(() => "");
+    if (c.video) videoHints(k); else { mediaHints(k); renderAlts(k); }
     chUpdate(k);
   });
   const adj = $(`adjust-${k}`);
@@ -776,6 +790,9 @@ function chValidate(k){
   const text = $(`f-${k}-text`).value.trim();
   const err = (m) => { res.className = "result err"; res.textContent = m; return false; };
   if (c.video && !ST[k].files.length) return err("Escolha o vídeo do Reel.");
+  if (k === "mastodon" && ST[k].files.length &&
+      ST[k].files.some((_, i) => !(ST[k].alts[i] || "").trim()))
+    return err("O ursal.zone exige texto alternativo em TODAS as imagens do toot.");
   if (c.hasEvent && !$(`f-${k}-start`).value) return err("Falta a data/hora de início do evento.");
   if (c.hasEvent && $(`f-${k}-end`).value && $(`f-${k}-end`).value <= $(`f-${k}-start`).value)
     return err("O fim do evento precisa ser depois do início.");
@@ -801,6 +818,7 @@ async function chSend(k, confirmFlag){
     fd.append("event_location", $(`f-${k}-place`).value);
   }
   ST[k].files.forEach(f => fd.append("images", f));
+  ST[k].files.forEach((_, i) => fd.append("alts", ST[k].alts[i] || ""));
   if (DERIVED[k]) fd.append("derived_from", DERIVED[k]);   // prov:wasDerivedFrom
   fd.append("is_posted", $(`f-${k}-posted`).checked ? "true" : "false");
   fd.append("confirm", confirmFlag ? "true" : "false");
@@ -862,23 +880,31 @@ async function loadRecent(k){
 }
 
 // ── cross-posting: copiar conteúdo desta aba pras outras ─────────────────────
-function copyAcross(from){
+// Mesmo contrato do derivar: texto cortado no limite e imagens RECORTADAS na
+// proporção ⭐ de cada canal (antes copiava cru — e quebrava ao passar pela
+// aba universal, que não tem f-universal-text).
+async function copyAcross(from){
   const text = from === "instagram" ? $("caption").value : $(`f-${from}-text`).value;
   const title = (from !== "instagram" && CH[from].hasTitle) ? $(`f-${from}-title`).value : "";
   // vídeo não vira imagem: copiando DO Reel, só o texto viaja
   const srcFiles = from === "instagram" ? files : (CH[from].video ? [] : ST[from].files);
+  const srcAlts = chAltList(from).slice();
   const firstLine = (title || text.split("\n")[0] || "").trim();
+  const res = from === "instagram" ? $("result") : $(`f-${from}-result`);
+  res.className = "result"; res.textContent = "📋 Copiando (recortando as imagens)…";
 
-  ORDER.filter(k => k !== from).forEach(k => {
+  for (const k of ORDER.filter(k => k !== from && k !== "universal")){
     if (k === "instagram"){
       $("caption").value = text.slice(0, MAX);
       if (srcFiles.length){
-        files = srcFiles.slice(0, 10);
+        files = await Promise.all(srcFiles.slice(0, 10).map(f =>
+          cropToRatio(f, (CFG.media.instagram || {}).recommended_ratio)));
         urls.forEach(URL.revokeObjectURL);
         urls = files.map(f => URL.createObjectURL(f));
         idx = 0;
+        igAlts = srcAlts.slice(0, files.length);
         $("imgHint").textContent = `${files.length} imagem(ns) — ordem do carrossel.`;
-        igMediaHints();
+        igMediaHints(); renderAlts("instagram");
       }
       render();
     } else {
@@ -887,16 +913,17 @@ function copyAcross(from){
       if (c.hasTitle) $(`f-${k}-title`).value = firstLine.slice(0, c.maxTitle);
       if (c.maxImages > 0 && !c.video && srcFiles.length){  // imagem não vira vídeo
         ST[k].urls.forEach(URL.revokeObjectURL);
-        ST[k].files = srcFiles.slice(0, c.maxImages);
+        ST[k].files = await Promise.all(srcFiles.slice(0, c.maxImages).map(f =>
+          cropToRatio(f, (CFG.media[k] || {}).recommended_ratio)));
         ST[k].urls = ST[k].files.map(f => URL.createObjectURL(f));
-        mediaHints(k);
+        ST[k].alts = srcAlts.slice(0, ST[k].files.length);
+        mediaHints(k); renderAlts(k);
       }
       chUpdate(k);
     }
-  });
-  const res = from === "instagram" ? $("result") : $(`f-${from}-result`);
+  }
   res.className = "result ok";
-  res.textContent = "📋 Conteúdo copiado pras outras abas (cortado nos limites de cada canal).";
+  res.textContent = "📋 Conteúdo copiado (texto cortado nos limites; imagens na proporção ⭐ de cada canal).";
 }
 
 // ── previews dos demais canais ───────────────────────────────────────────────
@@ -1041,13 +1068,77 @@ function chFileList(ch){
   return ST[ch].files;
 }
 
+function chAltList(ch){
+  if (ch === "instagram") return igAlts;
+  if (ch === "universal") return UNI.alts;
+  return ST[ch] ? ST[ch].alts : [];
+}
+
+// Inputs de texto alternativo, um por imagem selecionada. Digite na aba
+// universal e o derivar/copiar leva junto. No Mastodon é obrigatório
+// (ursal.zone); nos demais é o ideal (Warning do SHACL). O ✨ pede uma
+// sugestão pro Haiku (só aparece com ANTHROPIC_API_KEY configurada).
+function renderAlts(k){
+  const host = $(k === "instagram" ? "ig-alts" : `f-${k}-alts`);
+  if (!host) return;
+  const fileList = chFileList(k), altList = chAltList(k);
+  if (!fileList.length){ host.innerHTML = ""; return; }
+  const need = k === "mastodon";
+  host.innerHTML = fileList.map((f, i) => `
+    <label style="font-size:12px">Alt da imagem ${i + 1}${need ? " (obrigatório)" : ""}</label>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input type="text" class="altin" data-i="${i}" maxlength="1500" style="flex:1"
+             placeholder="descreva a foto pra quem usa leitor de tela"
+             value="${escapeHtml(altList[i] || "")}" />
+      ${CFG.alt_ai ? `<button class="altai" data-i="${i}" title="sugerir com IA">✨</button>` : ""}
+    </div>`).join("");
+  host.querySelectorAll(".altin").forEach(inp => inp.addEventListener("input", () => {
+    altList[Number(inp.dataset.i)] = inp.value;
+  }));
+  const resBox = $(k === "instagram" ? "result" : `f-${k}-result`);
+  host.querySelectorAll(".altai").forEach(btn => btn.addEventListener("click", async () => {
+    const i = Number(btn.dataset.i);
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const small = await downscaleForAlt(fileList[i]);
+      const fd = new FormData(); fd.append("image", small);
+      const j = await respJson(await fetch("/api/alt-suggest", { method: "POST", body: fd }));
+      if (j.ok){
+        altList[i] = j.alt;
+        const inp = host.querySelector(`.altin[data-i="${i}"]`);
+        if (inp) inp.value = j.alt;
+      } else if (resBox){ resBox.className = "result err"; resBox.textContent = "Erro na sugestão: " + j.error; }
+    } finally { btn.disabled = false; btn.textContent = "✨"; }
+  }));
+}
+
+// Versão reduzida SÓ pra sugestão de alt: ≤512px no lado maior mantém o custo
+// do Haiku em ~US$0,001/imagem (tokens de imagem ≈ largura×altura/750).
+function downscaleForAlt(file){
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      const s = Math.min(1, 512 / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.naturalWidth * s);
+      cv.height = Math.round(img.naturalHeight * s);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      cv.toBlob(b => res(b ? new File([b], "alt.jpg", { type: "image/jpeg" }) : file),
+                "image/jpeg", 0.85);
+    };
+    img.onerror = () => res(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 function openAdjuster(ch){
   const list = chFileList(ch);
   const msg = ch === "instagram" ? $("result") : $(`f-${ch}-result`);
   if (!list.length){ msg.className = "result err"; msg.textContent = "Selecione imagens primeiro."; return; }
   ADJ.ch = ch; ADJ.i = 0; ADJ.mode = "crop"; ADJ.ox = ADJ.oy = 0.5;
   const media = CFG.media[ch] || {};
-  ADJ.ratio = media.recommended_ratio || 1;
+  ADJ.ratio = media.recommended_ratio || 0;   // 0 = "original" (canal sem ⭐, ex.: e-mail)
   buildRatioChips(media);
   syncModeBtns();
   loadAdjImage();
@@ -1059,6 +1150,8 @@ function buildRatioChips(media){
   let presets = RATIO_PRESETS;
   if (media.min_ratio && media.max_ratio)   // só o que a plataforma aceita
     presets = presets.filter(([, r]) => r >= media.min_ratio - 1e-6 && r <= media.max_ratio + 1e-6);
+  else                                      // sem faixa: "original" (0) entra primeiro
+    presets = [["original", 0], ...presets];
   if (!presets.some(([, r]) => Math.abs(r - ADJ.ratio) < 1e-3)) ADJ.ratio = presets[0][1];
   $("adjRatios").innerHTML = "Proporção: " + presets.map(([lab, r]) => {
     const star = media.recommended_ratio && Math.abs(r - media.recommended_ratio) < 1e-3 ? " ⭐" : "";
@@ -1089,8 +1182,9 @@ function loadAdjImage(){
 function drawAdj(){
   if (!ADJ.img) return;
   const img = ADJ.img, cv = $("adjCanvas"), ctx = cv.getContext("2d");
+  const R = ADJ.ratio || (img.naturalWidth / img.naturalHeight);  // 0 = original
   cv.width = 1080;                              // largura padrão de export (IG)
-  cv.height = Math.round(1080 / ADJ.ratio);
+  cv.height = Math.round(1080 / R);
   const W = cv.width, H = cv.height, sw = img.naturalWidth, sh = img.naturalHeight;
   ctx.clearRect(0, 0, W, H);
   if (ADJ.mode === "stretch"){
@@ -1137,7 +1231,10 @@ function updateAdjMulti(){
   const label = document.createElement("div");
   label.className = "hint";
   label.style.width = "100%";
-  label.textContent = "Como fica em cada canal (recorte central na proporção ⭐ ao derivar):";
+  label.textContent = "Como fica em cada canal (recorte central na proporção ⭐ ao derivar):"
+    + (ADJ.mode === "fill"
+       ? " ⚠️ o fundo borrado do preencher vira parte da imagem — ao derivar, o recorte corta dentro dele."
+       : "");
   host.appendChild(label);
   const src = $("adjCanvas");
   adjRatioGroups().forEach(gr => {
@@ -1304,6 +1401,8 @@ $("images").addEventListener("change", (e) => {
   files = Array.from(e.target.files).slice(0,10);
   urls = files.map(f => URL.createObjectURL(f));
   idx = 0;
+  igAlts = files.map(() => "");
+  renderAlts("instagram");
   $("imgHint").textContent = files.length ? `${files.length} imagem(ns) — ordem do carrossel.` : "A ordem dos arquivos é a ordem do carrossel.";
   igMediaHints();
   render();
@@ -1326,6 +1425,7 @@ async function sendPublish(confirm){
   const fd = new FormData();
   fd.append("channel", "instagram");
   files.forEach(f => fd.append("images", f));
+  files.forEach((_, i) => fd.append("alts", igAlts[i] || ""));
   if (DERIVED.instagram) fd.append("derived_from", DERIVED.instagram);
   fd.append("caption", $("caption").value);
   fd.append("collaborators", $("collaborators").value);
@@ -1414,7 +1514,7 @@ async function removePost(shortcode, cell){
 // ── bootstrap: config → abas → painéis ──
 fetch("/api/config").then(r=>r.json()).then(c=>{
   DRY = !!c.dry_run;
-  CFG = { channels: c.channels || {}, media: c.media || {} };
+  CFG = { channels: c.channels || {}, media: c.media || {}, alt_ai: !!c.alt_ai };
   if(c.ig_user && !/^\d+$/.test(c.ig_user)){ $("confirmAcct").textContent = c.ig_user; $("acct").textContent = c.ig_user; }
   if(DRY){ const h=document.createElement("div"); h.className="hint";
     h.textContent="Modo DRY-RUN: não publica em canal nenhum (ideal pra testar local)."; $("go").after(h); }
