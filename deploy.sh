@@ -34,7 +34,7 @@ gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
   --member=allUsers --role=roles/storage.objectViewer >/dev/null
 
 # Secrets from .env
-get_env() { grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- | sed "s/^[\"']//;s/[\"']$//"; }
+get_env() { grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- | sed "s/^[\"']//;s/[\"']$//" || true; }
 upsert_secret() {
   local name="$1" val="$2"
   if [ -z "$val" ]; then echo "   - $name: empty, skipping"; return; fi
