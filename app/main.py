@@ -108,6 +108,18 @@ def list_announcements(channel: str) -> JSONResponse:
     return JSONResponse(ttl_store.channel_announcements(ttl_store.load_dataset(), channel))
 
 
+@app.get("/api/universal/image")
+def universal_image(iri: str, i: int) -> Response:
+    """Bytes da i-ésima imagem de uma matriz universal — o "carregar" da aba
+    reabre as imagens como arquivos locais (e o bucket não precisa de CORS)."""
+    url = ttl_store.universal_image_url(ttl_store.load_dataset(), iri, i)
+    got = storage.read_image(url) if url else None
+    if not got:
+        return JSONResponse({"error": "Imagem não encontrada."}, status_code=404)
+    data, mime = got
+    return Response(data, media_type=mime)
+
+
 @app.post("/api/alt-suggest")
 async def alt_suggest(image: UploadFile = File(...), context: str = Form("")) -> JSONResponse:
     """Sugere texto alternativo pra UMA imagem (Claude Haiku). A UI manda a
@@ -320,19 +332,42 @@ async def api_publish(
 
     # 1) Publish to Instagram (skipped & faked if DRY_RUN, or if saving a draft).
     pub = {"id": None, "permalink": "", "dry_run": Config.DRY_RUN}
+    warning = ""
     if posted:
-        try:
-            pub = publish(
-                image_urls, caption,
-                location_id=location_id or None,
-                user_tags=tags or None,
-                collaborators=collab or None,
-            )
-        except PublishError as exc:
-            # 422 (não 502): a Cloudflare troca 502 da origem pela página HTML
-            # dela e a UI perderia a mensagem real. Logado pra diagnóstico.
-            log.warning("publish instagram falhou: %s", exc)
-            return JSONResponse({"ok": False, "error": str(exc)}, status_code=422)
+        # "Invalid user id" (code 110) com a conta OK = um @ marcado/colaborador
+        # que o IG não resolve (grafia, conta apagada ou que não aceita
+        # marcação). Não trava o post: tenta de novo sem as marcações (depois
+        # sem colaboradores também) e AVISA a UI do que caiu.
+        attempts = [(tags, collab)]
+        if tags and collab:
+            attempts.append(([], collab))
+        if tags or collab:
+            attempts.append(([], []))
+        for n, (try_tags, try_collab) in enumerate(attempts):
+            try:
+                pub = publish(
+                    image_urls, caption,
+                    location_id=location_id or None,
+                    user_tags=try_tags or None,
+                    collaborators=try_collab or None,
+                )
+            except PublishError as exc:
+                log.warning("publish instagram falhou: %s (tags=%s collab=%s)",
+                            exc, try_tags, try_collab)
+                if "code=110" in str(exc) and n + 1 < len(attempts):
+                    continue
+                # 422 (não 502): a Cloudflare troca 502 da origem pela página
+                # HTML dela e a UI perderia a mensagem real.
+                return JSONResponse({"ok": False, "error": str(exc)}, status_code=422)
+            dropped = [h for h in tags if h not in try_tags] + \
+                      [h for h in collab if h not in try_collab]
+            if dropped:
+                warning = ("Publicado SEM " + ", ".join("@" + h for h in dropped)
+                           + " — o Instagram recusou marcar essa(s) conta(s) (grafia errada, "
+                             "conta apagada ou que não aceita marcação). Marque direto no app, se quiser.")
+                log.warning("publish instagram: %s", warning)
+            tags, collab = try_tags, try_collab   # o registro reflete o que foi ao ar
+            break
 
     # 2) Record in the dataset TTL.
     # Real posts get their unique IG permalink shortcode. Dry-runs and drafts
@@ -363,6 +398,7 @@ async def api_publish(
     return JSONResponse({
         "ok": True,
         "instagram": pub,
+        "warning": warning,
         "image_urls": image_urls,
         "validation": check,
     })

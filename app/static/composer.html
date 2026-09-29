@@ -77,6 +77,9 @@
   .ritem .rdel { flex:none; border:1px solid var(--line); background:#fff; color:#c2410c;
                  border-radius:6px; font-size:11px; padding:2px 6px; cursor:pointer; }
   .ritem .rdel:hover { background:#fff1f2; }
+  .ritem .rload { flex:none; border:1px solid var(--line); background:#fff; border-radius:6px;
+                  padding:2px 8px; font-size:12px; cursor:pointer; }
+  .ritem .rload:hover { background:#f5f5f5; }
   /* alt-text: começa com 2 linhas, estica no arrasto até ~3; além disso rola */
   .altlist textarea.altin { min-height:2.9em; max-height:72px; resize:vertical;
                             font-size:13px; line-height:1.4; }
@@ -302,8 +305,8 @@
       <button class="mclose" id="adjClose">✕</button></div>
     <div class="mrow" id="adjRatios"></div>
     <div class="mrow" id="adjModes">
-      <button class="mbtn on" data-mode="crop">Cortar</button>
-      <button class="mbtn" data-mode="fill">Preencher (desfoque)</button>
+      <button class="mbtn on" data-mode="fill">Preencher (desfoque)</button>
+      <button class="mbtn" data-mode="crop">Cortar</button>
       <button class="mbtn" data-mode="stretch">Esticar</button>
       <label id="adjUseCropWrap" style="display:none;align-items:center;gap:4px"
              title="usa o recorte do modo Cortar como fonte, em vez da imagem inteira">
@@ -363,12 +366,14 @@ const CH = {
 };
 const ORDER = ["universal", "instagram", "reel", "whatsapp", "telegram", "mastodon", "reddit", "email", "gcal"];
 // Recorte NÃO-DESTRUTIVO: as abas guardam o arquivo ORIGINAL + um "hint" de
-// enquadramento ({offs: {ratioKey: {ox,oy,z}}, rot, ratio?}) — o recorte só é
-// aplicado NA HORA DE PUBLICAR (exportImage), então dá pra reabrir o ajustador
-// e corrigir qualquer erro antes de postar. hint = null → arquivo vai como
-// está; hint sem `ratio` → corta na proporção ⭐ do canal. As urls de preview
-// mostram o resultado JÁ recortado (refreshPreview). Só Preencher/Esticar
-// mudam os pixels de verdade (e zeram o hint).
+// enquadramento ({offs: {ratioKey: {ox,oy,z}}, rot, ratio?, mode?}) — o
+// recorte só é aplicado NA HORA DE PUBLICAR (exportImage), então dá pra reabrir
+// o ajustador e corrigir qualquer erro antes de postar. hint = null → arquivo
+// vai como está; hint sem `ratio` → encaixa na proporção ⭐ do canal. mode
+// "fill" (o PADRÃO ao derivar/copiar) = imagem inteira sobre fundo borrado;
+// "crop" = cover com offs/zoom. As urls de preview mostram o resultado JÁ
+// encaixado (refreshPreview). Só Esticar e o "sobre o recorte" mudam os
+// pixels de verdade (e zeram o hint).
 const ST = {};                    // estado por canal (≠ IG/universal): {files, urls, alts, hints}
 ORDER.filter(k => k !== "universal" && k !== "instagram")
      .forEach(k => ST[k] = { files: [], urls: [], alts: [], hints: [] });
@@ -378,6 +383,9 @@ const UNI = { files: [], urls: [], alts: [], cropHints: [] };
 let igAlts = [];                  // alt-text das imagens do IG (paralelo a files)
 let igHints = [];                 // enquadramentos do IG (paralelo a files)
 const DERIVED = {};               // canal → IRI do ph:UniversalPost de origem
+// Matriz já gravada que está no editor (carregada da lista ou recém-registrada):
+// se nada mudou desde então, derivar/postar REUSA o IRI em vez de gravar outra.
+let UNI_SAVED = null;             // {iri, sig, files}
 let cur = "universal";
 let DRY = true;                   // de /api/config
 let CFG = { channels: {}, media: {} };
@@ -480,12 +488,22 @@ function buildUniversalPane(){
     ${blocksHtml}
     <label>Imagens (até 20, na ordem)</label>
     <input type="file" id="f-universal-images" accept="image/*" multiple />
-    <div class="hint" id="f-universal-imghint">Cada canal leva as primeiras que couberem, recortadas na proporção ⭐ dele ao derivar.</div>
+    <div class="hint" id="f-universal-imghint">Cada canal leva as primeiras que couberem, preenchidas (fundo borrado, sem cortar) na proporção ⭐ dele ao derivar.</div>
     <div class="altlist" id="f-universal-alts"></div>
     <div class="copyrow"><button id="adjust-universal">✂️ Ajustar proporção das imagens</button></div>
-    <button class="publish" id="f-universal-go">🌐 Registrar e derivar pra todas as abas</button>
-    <div class="hint">Isso grava o ph:UniversalPost e preenche as abas — NADA é publicado ainda;
-      revise cada canal e publique um a um (cada anúncio sai com prov:wasDerivedFrom).</div>
+    <button class="publish" id="f-universal-all">📣 Postar em todas as mídias sociais</button>
+    <div class="confirm" id="f-universal-confirm">
+      ⚠️ Isso vai derivar e publicar <b>AO VIVO</b> em: <span id="f-universal-targets"></span>. Tem certeza?
+      <div class="cbtns">
+        <button class="btn-cancel" id="f-universal-no">Cancelar</button>
+        <button class="btn-confirm" id="f-universal-yes">Sim, postar em todas</button>
+      </div>
+    </div>
+    <button class="publish" id="f-universal-go" style="margin-top:10px">🌐 Registrar e derivar pra todas as abas</button>
+    <div class="hint">📣 deriva e já publica nas redes configuradas (Instagram, WhatsApp, Telegram,
+      Mastodon, Reddit — e-mail e Agenda ficam de fora). 🌐 só grava o ph:UniversalPost e
+      preenche as abas — revise cada canal e publique um a um (cada anúncio sai com
+      prov:wasDerivedFrom).</div>
     <div id="f-universal-result"></div>
     <label>Posts universais já registrados</label>
     <div class="recent" id="f-universal-recent"><div class="recent-empty">Carregando…</div></div>`;
@@ -498,6 +516,10 @@ function buildUniversalPane(){
     imgAppend("universal", e.target, 20));
   $("adjust-universal").addEventListener("click", () => openAdjuster("universal"));
   $("f-universal-go").addEventListener("click", deriveUniversal);
+  $("f-universal-all").addEventListener("click", askPostAll);
+  $("f-universal-no").addEventListener("click", () => $("f-universal-confirm").classList.remove("show"));
+  $("f-universal-yes").addEventListener("click", () => {
+    $("f-universal-confirm").classList.remove("show"); postAll(); });
 }
 
 function uniBlocks(){
@@ -519,9 +541,10 @@ function uniUpdate(){
   if (cur === "universal") chRender("universal");
 }
 
-// Recorte automático: cover na proporção do canal, JPEG 1080px. Sem hint,
-// centrado; com hint (do ajustador da aba universal), usa o enquadramento
-// salvo pra ESSA proporção ({offs: {ratioKey: {ox,oy}}, rot}) + a rotação.
+// Encaixe automático na proporção do canal, JPEG 1080px. hint.mode "fill":
+// imagem inteira (contain) sobre fundo borrado, com a rotação. Senão cover:
+// sem hint, centrado; com hint, usa o enquadramento salvo pra ESSA proporção
+// ({offs: {ratioKey: {ox,oy}}, rot}) + a rotação.
 // Sem ratio (e-mail): mantém a proporção ORIGINAL mas ainda reencoda JPEG —
 // formato uniforme em todos os canais (um HEIC de iPhone quebrava só a aba
 // de e-mail enquanto as outras recebiam JPEG do recorte).
@@ -536,9 +559,14 @@ function cropToRatio(file, ratio, hint){
       const cv = document.createElement("canvas");
       cv.width = W; cv.height = H;
       const ctx = cv.getContext("2d");
-      const off = (hint && hint.offs && hint.offs[rk(ratio)]) || { ox: 0.5, oy: 0.5 };
-      drawCover(ctx, img, img.naturalWidth, img.naturalHeight, W, H,
-                off.ox, off.oy, (hint && hint.rot) || 0, off.z || 1);
+      const rot = (hint && hint.rot) || 0;
+      if (hint && hint.mode === "fill"){
+        drawFill(ctx, img, img.naturalWidth, img.naturalHeight, W, H, rot);
+      } else {
+        const off = (hint && hint.offs && hint.offs[rk(ratio)]) || { ox: 0.5, oy: 0.5 };
+        drawCover(ctx, img, img.naturalWidth, img.naturalHeight, W, H,
+                  off.ox, off.oy, rot, off.z || 1);
+      }
       cv.toBlob(b => res(b
         ? new File([b], file.name.replace(/\.[^.]+$/, "")
                    + (ratio ? `-${ratioLabel(ratio).replace(":", "x")}` : "") + ".jpg",
@@ -550,34 +578,89 @@ function cropToRatio(file, ratio, hint){
   });
 }
 
+// Erro de validação dos blocos/título da matriz (ou "" se ok).
+function uniCheck(){
+  const ladder = uniLadder(), blocks = uniBlocks();
+  if (!blocks.length || !blocks[0].trim()) return "Escreva o bloco 1 — é o que entra em todos os canais.";
+  if (blocks.some(b => !b.trim())) return "Preencha os blocos em sequência, sem pular.";
+  for (let i = 0; i < blocks.length; i++)
+    if (blocks[i].length > ladder[i].budget) return `Bloco ${i + 1} excede ${ladder[i].budget} caracteres.`;
+  if ($("f-universal-title").value.trim().length > 255) return "Título excede 255 caracteres.";
+  return "";
+}
+
+// O que a matriz grava (título, blocos, alts + a identidade dos arquivos).
+function uniSig(){
+  return JSON.stringify([$("f-universal-title").value.trim(), uniBlocks(), UNI.alts]);
+}
+function uniMarkSaved(iri){ UNI_SAVED = { iri, sig: uniSig(), files: UNI.files.slice() }; }
+function uniUnchanged(){
+  return !!UNI_SAVED && UNI_SAVED.sig === uniSig()
+    && UNI_SAVED.files.length === UNI.files.length
+    && UNI_SAVED.files.every((f, i) => f === UNI.files[i]);
+}
+
+// Reabre uma matriz gravada no editor: título, blocos, imagens (via a app,
+// como arquivos) e alts. Enquadramentos não são gravados — voltam ao padrão.
+async function loadUniversal(a){
+  const res = $("f-universal-result");
+  res.className = "result"; res.textContent = "Carregando o post universal…";
+  const imgs = [];
+  try {
+    for (let i = 0; i < (a.images || 0); i++){
+      const r = await fetch(`/api/universal/image?iri=${encodeURIComponent(a.iri)}&i=${i}`);
+      if (!r.ok) throw new Error(`imagem ${i + 1}: HTTP ${r.status}`);
+      const b = await r.blob();
+      const ext = (b.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
+      imgs.push(new File([b], `universal-${i + 1}.${ext}`, { type: b.type || "image/jpeg" }));
+    }
+  } catch (e){ res.className = "result err"; res.textContent = "Falha ao carregar: " + e.message; return; }
+  $("f-universal-title").value = a.title || "";
+  const texts = a.block_texts || [];
+  uniLadder().forEach((_, i) => $(`f-universal-b${i + 1}`).value = texts[i] || "");
+  // no lugar: UNI.* são referências vivas (imgArrays)
+  UNI.urls.forEach(u => u && URL.revokeObjectURL(u));
+  UNI.files.splice(0, UNI.files.length, ...imgs);
+  UNI.urls.splice(0, UNI.urls.length, ...imgs.map(f => URL.createObjectURL(f)));
+  UNI.alts.splice(0, UNI.alts.length, ...imgs.map((_, i) => (a.image_alts || [])[i] || ""));
+  UNI.cropHints.splice(0, UNI.cropHints.length, ...imgs.map(() => null));
+  uniMarkSaved(a.iri);
+  imgRefresh("universal");
+  res.className = "result ok";
+  res.textContent = `↺ Post universal de ${(a.date || "").slice(0, 10)} carregado — edite à vontade; `
+    + "sem mudanças, derivar/postar reusa a mesma matriz.";
+}
+
 async function deriveUniversal(){
   const res = $("f-universal-result"), btn = $("f-universal-go");
-  const ladder = uniLadder();
   const blocks = uniBlocks();
   const err = m => { res.className = "result err"; res.textContent = m; };
-  if (!blocks.length || !blocks[0].trim()) return err("Escreva o bloco 1 — é o que entra em todos os canais.");
-  if (blocks.some(b => !b.trim())) return err("Preencha os blocos em sequência, sem pular.");
-  for (let i = 0; i < blocks.length; i++)
-    if (blocks[i].length > ladder[i].budget)
-      return err(`Bloco ${i + 1} excede ${ladder[i].budget} caracteres.`);
+  const e = uniCheck();
+  if (e){ err(e); return null; }
   const title = $("f-universal-title").value.trim();
-  if (title.length > 255) return err("Título excede 255 caracteres.");
 
-  // 1) grava a matriz (nunca publica em rede)
-  btn.disabled = true; res.className = "result"; res.textContent = "Registrando a matriz…";
-  const fd = new FormData();
-  fd.append("channel", "universal");
-  fd.append("title", title);
-  blocks.forEach(b => fd.append("blocks", b));
-  UNI.files.forEach(f => fd.append("images", f));
-  UNI.files.forEach((_, i) => fd.append("alts", UNI.alts[i] || ""));
+  // 1) grava a matriz (nunca publica em rede) — ou reusa a já gravada, se o
+  // editor não mudou desde que ela foi carregada/registrada
+  btn.disabled = true; res.className = "result";
   let j;
-  try { j = await respJson(await fetch("/api/publish", { method: "POST", body: fd })); }
-  catch (e){ btn.disabled = false; return err("Falha de rede: " + e); }
-  if (!j.ok){ btn.disabled = false; return err("Erro: " + j.error); }
+  if (uniUnchanged()){
+    j = { ok: true, iri: UNI_SAVED.iri, reused: true };
+  } else {
+    res.textContent = "Registrando a matriz…";
+    const fd = new FormData();
+    fd.append("channel", "universal");
+    fd.append("title", title);
+    blocks.forEach(b => fd.append("blocks", b));
+    UNI.files.forEach(f => fd.append("images", f));
+    UNI.files.forEach((_, i) => fd.append("alts", UNI.alts[i] || ""));
+    try { j = await respJson(await fetch("/api/publish", { method: "POST", body: fd })); }
+    catch (e){ btn.disabled = false; err("Falha de rede: " + e); return null; }
+    if (!j.ok){ btn.disabled = false; err("Erro: " + j.error); return null; }
+    uniMarkSaved(j.iri);
+  }
 
   // 2) deriva texto (escada) + imagens (recorte por canal) pra cada aba
-  res.textContent = "Recortando imagens e preenchendo as abas…";
+  res.textContent = "Encaixando imagens e preenchendo as abas…";
   const fallbackTitle = (title || blocks[0].split("\n")[0]).trim();
   for (const k of allPub()){
     const limit = chMaxText(k);
@@ -591,7 +674,7 @@ async function deriveUniversal(){
         // segue editável e o corte só acontece ao publicar (exportImage).
         urls.forEach(URL.revokeObjectURL);
         files = UNI.files.slice(0, 10);
-        igHints = files.map((_, i) => cloneHint(UNI.cropHints[i]) || { offs: {}, rot: 0 });
+        igHints = files.map((_, i) => cloneHint(UNI.cropHints[i]) || defaultHint());
         urls = files.map(() => null);
         await Promise.all(files.map((_, i) => refreshPreview("instagram", i)));
         idx = 0;
@@ -606,7 +689,7 @@ async function deriveUniversal(){
       if (c.maxImages > 0 && !c.video && UNI.files.length){
         ST[k].urls.forEach(URL.revokeObjectURL);
         ST[k].files = UNI.files.slice(0, c.maxImages);
-        ST[k].hints = ST[k].files.map((_, i) => cloneHint(UNI.cropHints[i]) || { offs: {}, rot: 0 });
+        ST[k].hints = ST[k].files.map((_, i) => cloneHint(UNI.cropHints[i]) || defaultHint());
         ST[k].urls = ST[k].files.map(() => null);
         await Promise.all(ST[k].files.map((_, i) => refreshPreview(k, i)));
         ST[k].alts = UNI.alts.slice(0, ST[k].files.length);
@@ -617,12 +700,66 @@ async function deriveUniversal(){
   }
   btn.disabled = false;
   res.className = "result ok";
-  let msg = "🌐 Matriz registrada e abas preenchidas — revise cada canal e publique.";
+  let msg = j.reused ? "🌐 Matriz (a mesma, sem mudanças) derivada pras abas — revise cada canal e publique."
+                     : "🌐 Matriz registrada e abas preenchidas — revise cada canal e publique.";
   const v = j.validation || {};
   if (v.ran) msg += v.conforms ? " SHACL: conforme ✔" : "\nSHACL VIOLAÇÕES:\n- " + v.violations.join("\n- ");
   res.textContent = msg;
   loadRecent("universal");
   chRender("universal");
+  return j.iri;
+}
+
+// ── 📣 postar em todas: deriva e publica nas redes sociais configuradas ──────
+// E-mail e Agenda não são "mídia social" (e a Agenda pede data); Reel pede vídeo.
+const SOCIAL = ["instagram", "whatsapp", "telegram", "mastodon", "reddit"];
+const chName = k => k === "instagram" ? "📷 Instagram" : `${CH[k].icon} ${CH[k].label}`;
+function socialTargets(){
+  return SOCIAL.filter(k => DRY || (CFG.channels[k] || {}).configured);
+}
+function askPostAll(){
+  const res = $("f-universal-result");
+  const e = uniCheck();
+  if (e){ res.className = "result err"; res.textContent = e; return; }
+  const targets = socialTargets();
+  if (!targets.length){
+    res.className = "result err";
+    res.textContent = "Nenhuma rede social configurada pra publicar ao vivo."; return;
+  }
+  if (DRY) return postAll();   // dry-run: nada vai ao ar, sem confirmação
+  $("f-universal-targets").textContent = targets.map(chName).join(", ");
+  $("f-universal-confirm").classList.add("show");
+}
+async function postAll(){
+  const res = $("f-universal-result"), all = $("f-universal-all");
+  all.disabled = true;
+  try {
+    const iri = await deriveUniversal();
+    if (!iri) return;
+    const lines = [];
+    for (const k of socialTargets()){
+      res.className = "result"; res.textContent = `📣 Publicando em ${chName(k)}…`;
+      let ok = false, why = "";
+      if (k === "instagram"){
+        $("is_posted").checked = true; render();
+        if (!files.length) why = "sem imagem (o Instagram exige)";
+        else if (!validateForm()) why = $("result").textContent;
+        else { ok = await sendPublish(true); why = $("result").textContent; }
+      } else {
+        $(`f-${k}-posted`).checked = true; chUpdate(k);
+        if (!chValidate(k)) why = $(`f-${k}-result`).textContent;
+        else { ok = await chSend(k, true); why = $(`f-${k}-result`).textContent; }
+      }
+      const first = (why || "").split("\n")[0];
+      const warned = ok && first.startsWith("⚠️");
+      lines.push(`${!ok ? "❌" : warned ? "⚠️" : "✅"} ${chName(k)}`
+                 + (!ok || warned ? ` — ${first.replace(/^⚠️\s*/, "")}` : ""));
+    }
+    const failed = lines.some(l => l.startsWith("❌"));
+    res.className = "result " + (failed ? "err" : "ok");
+    res.textContent = (DRY ? "📣 DRY-RUN — nada foi ao ar:\n" : "📣 Postado:\n") + lines.join("\n")
+      + (failed ? "\nCorrija na aba do canal e publique de lá." : "");
+  } finally { all.disabled = false; }
 }
 
 // ── formulários dos demais canais ────────────────────────────────────────────
@@ -879,9 +1016,12 @@ async function chSend(k, confirmFlag){
       res.className = "result " + ((v.ran && !v.conforms) ? "err" : "ok");
       res.textContent = msg;
       loadRecent(k);
+      btn.disabled = false;
+      return true;
     }
   } catch (e){ res.className = "result err"; res.textContent = "Falha de rede: " + e; }
   btn.disabled = false;
+  return false;
 }
 
 async function loadRecent(k){
@@ -892,7 +1032,7 @@ async function loadRecent(k){
   if (!Array.isArray(items) || !items.length){
     host.innerHTML = '<div class="recent-empty">Nenhum anúncio ainda.</div>'; return;
   }
-  host.innerHTML = items.slice(0, 8).map(a => {
+  host.innerHTML = items.slice(0, 8).map((a, i) => {
     const when = (a.date || "").slice(0, 10);
     const label = escapeHtml(a.title || a.text || "(sem texto)");
     const img = a.thumb ? `<img src="${escapeHtml(a.thumb)}" alt="">` : "";
@@ -902,9 +1042,13 @@ async function loadRecent(k){
     // canal com des-envio (Telegram/Mastodon/WhatsApp/Agenda).
     const del = a.deletable ? `<button class="rdel" data-iri="${escapeHtml(a.iri)}"
         title="apagar (rascunho, ou publicado há menos de 24h)">✕</button>` : "";
+    const load = k === "universal" ? `<button class="rload" data-i="${i}"
+        title="reabrir este post no editor (texto, imagens e alts)">↺ carregar</button>` : "";
     return `<div class="ritem">${img}<div class="rtxt">${label}${pill}${link}</div>
-            <div class="rdate">${when}</div>${del}</div>`;
+            <div class="rdate">${when}</div>${load}${del}</div>`;
   }).join("");
+  host.querySelectorAll(".rload").forEach(b => b.addEventListener("click", () =>
+    loadUniversal(items[+b.dataset.i])));
   host.querySelectorAll(".rdel").forEach(b => b.addEventListener("click", async () => {
     if (b.dataset.arm !== "1"){            // 1º clique arma, 2º confirma
       b.dataset.arm = "1"; b.textContent = "confirma?";
@@ -914,6 +1058,7 @@ async function loadRecent(k){
     b.disabled = true; b.textContent = "…";
     const fd = new FormData(); fd.append("iri", b.dataset.iri);
     const j = await respJson(await fetch("/api/announcements/delete", { method: "POST", body: fd }));
+    if (j.ok && UNI_SAVED && UNI_SAVED.iri === b.dataset.iri) UNI_SAVED = null;   // matriz apagada: não reusar
     const res = $(`f-${k}-result`);
     if (res){
       res.className = "result " + (j.ok ? "ok" : "err");
@@ -937,13 +1082,13 @@ async function copyAcross(from){
   // origem NÃO (cada destino corta na própria ⭐, mantendo offset/zoom/rot).
   const srcHints = (from !== "instagram" && CH[from].video) ? [] : chHints(from);
   const hintFor = i => {
-    const h = cloneHint(srcHints[i]) || { offs: {}, rot: 0 };
+    const h = cloneHint(srcHints[i]) || defaultHint();
     delete h.ratio;
     return h;
   };
   const firstLine = (title || text.split("\n")[0] || "").trim();
   const res = from === "instagram" ? $("result") : $(`f-${from}-result`);
-  res.className = "result"; res.textContent = "📋 Copiando (recortando as imagens)…";
+  res.className = "result"; res.textContent = "📋 Copiando (encaixando as imagens)…";
 
   for (const k of ORDER.filter(k => k !== from && k !== "universal")){
     if (k === "instagram"){
@@ -1168,6 +1313,17 @@ function drawContain(ctx, src, sw, sh, W, H, deg){
   ctx.restore();
 }
 
+// Preencher: cover borrado + véu ao fundo, a imagem inteira (contain) na frente.
+function drawFill(ctx, src, sw, sh, W, H, deg){
+  ctx.save();
+  ctx.filter = `blur(${Math.max(4, Math.round(W / 27))}px)`;   // 40px a 1080
+  drawCover(ctx, src, sw, sh, W, H, 0.5, 0.5, deg);
+  ctx.restore();
+  ctx.fillStyle = "rgba(0,0,0,.15)";
+  ctx.fillRect(0, 0, W, H);
+  drawContain(ctx, src, sw, sh, W, H, deg);
+}
+
 // O recorte do modo Cortar renderizado num canvas — vira a FONTE do
 // preencher/esticar quando "sobre o recorte" está ligado (a rotação já sai
 // aplicada aqui, então quem consome desenha com rot=0).
@@ -1210,6 +1366,8 @@ function chHints(ch){
 }
 
 const cloneHint = h => h ? JSON.parse(JSON.stringify(h)) : null;
+// enquadramento padrão ao derivar/copiar: PREENCHER (nada da foto é cortado)
+const defaultHint = () => ({ offs: {}, rot: 0, mode: "fill" });
 function chRatio(k){ return (CFG.media[k] || {}).recommended_ratio; }
 
 // O arquivo COMO VAI PRO PROVEDOR: original sem hint; com hint, recortado na
@@ -1247,7 +1405,7 @@ function imgRefresh(k){
   }
   else if (k === "universal"){
     $("f-universal-imghint").textContent =
-      `${UNI.files.length} imagem(ns) — recortadas por canal ao derivar.`;
+      `${UNI.files.length} imagem(ns) — encaixadas por canal ao derivar.`;
     uniUpdate();
     if (cur === "universal") chRender("universal");
   } else {
@@ -1388,7 +1546,7 @@ function openAdjuster(ch){
   const list = chFileList(ch);
   const msg = ch === "instagram" ? $("result") : $(`f-${ch}-result`);
   if (!list.length){ msg.className = "result err"; msg.textContent = "Selecione imagens primeiro."; return; }
-  ADJ.ch = ch; ADJ.i = 0; ADJ.mode = "crop"; ADJ.ox = ADJ.oy = 0.5;
+  ADJ.ch = ch; ADJ.i = 0; ADJ.mode = "fill"; ADJ.ox = ADJ.oy = 0.5;
   ADJ.useCrop = false; $("adjUseCrop").checked = false;
   const media = CFG.media[ch] || {};
   ADJ.media = media;   // pro loadAdjImage poder reconstruir os chips por imagem
@@ -1445,9 +1603,13 @@ function syncModeBtns(){
   // zoom só age no recorte (e no derivar) — fora do Cortar fica apagado
   $("adjZoom").disabled = $("adjZoomReset").disabled = ADJ.mode !== "crop";
   const crop = ADJ.mode === "crop";
-  $("adjApply").textContent = crop ? "Salvar recorte desta imagem" : "Aplicar nesta imagem";
+  const asHint = crop || (ADJ.mode === "fill" && !ADJ.useCrop);
+  $("adjApply").textContent = crop ? "Salvar recorte desta imagem"
+    : asHint ? "Salvar preenchimento desta imagem" : "Aplicar nesta imagem";
   $("adjHint").textContent = !crop
-    ? "Preencher/Esticar geram um arquivo novo (mudam os pixels). ⭐ = proporção ideal do canal."
+    ? (asHint
+       ? "Preencher (padrão): a foto inteira sobre fundo borrado, na proporção de cada canal — aplicado só ao publicar."
+       : "Esticar e \"sobre o recorte\" geram um arquivo novo (mudam os pixels). ⭐ = proporção ideal do canal.")
     : ADJ.ch === "universal"
       ? "Arraste pra enquadrar CADA proporção (troque no chip). O recorte é aplicado ao derivar — e segue editável em cada aba."
       : "Arraste pra enquadrar (⭐ = proporção ideal). O recorte só é aplicado ao PUBLICAR — reabra pra corrigir quando quiser.";
@@ -1460,6 +1622,10 @@ function loadAdjImage(){
   ADJ.ox = ADJ.oy = 0.5; ADJ.rot = 0; ADJ.zoom = 1; ADJ.offs = {}; ADJ.dirty = false;
   // recarrega o enquadramento salvo desta imagem (qualquer aba)
   const hint = chHints(ADJ.ch)[ADJ.i];
+  // o modo segue o hint da imagem; sem hint (ou fill), abre no Preencher
+  ADJ.mode = hint && hint.mode !== "fill" ? "crop" : "fill";
+  ADJ.useCrop = false; $("adjUseCrop").checked = false;
+  syncModeBtns();
   if (hint){
     ADJ.offs = JSON.parse(JSON.stringify(hint.offs || {}));
     ADJ.rot = hint.rot || 0;
@@ -1503,12 +1669,7 @@ function drawAdj(){
     ctx.drawImage(src, -needW / 2, -needH / 2, needW, needH);
     ctx.restore();
   } else if (ADJ.mode === "fill"){
-    ctx.filter = "blur(40px)";                  // fundo: cover borrado + véu
-    drawCover(ctx, src, sw, sh, W, H, 0.5, 0.5, rot);
-    ctx.filter = "none";
-    ctx.fillStyle = "rgba(0,0,0,.15)";
-    ctx.fillRect(0, 0, W, H);
-    drawContain(ctx, src, sw, sh, W, H, rot);   // frente: contain
+    drawFill(ctx, src, sw, sh, W, H, rot);      // fundo borrado + contain
   } else {                                      // crop: cover com offset arrastável
     drawCover(ctx, src, sw, sh, W, H, ADJ.ox, ADJ.oy, ADJ.rot, ADJ.zoom);
     drawGridGuide(ctx, W, H);
@@ -1569,12 +1730,14 @@ function updateAdjMulti(){
   const label = document.createElement("div");
   label.className = "hint";
   label.style.width = "100%";
-  label.textContent = (ADJ.mode === "crop"
+  const fillHint = ADJ.mode === "fill" && !ADJ.useCrop;
+  label.textContent = ADJ.mode === "crop"
     ? "Como fica em cada canal ao derivar (enquadramento do chip de cada proporção):"
-    : "Como fica em cada canal (recorte central na proporção ⭐ ao derivar):")
-    + (ADJ.mode === "fill"
-       ? " ⚠️ o fundo borrado do preencher vira parte da imagem — ao derivar, o recorte corta dentro dele."
-       : "");
+    : fillHint
+      ? "Como fica em cada canal ao derivar (preenchido na proporção ⭐ de cada um):"
+      : "Como fica em cada canal (recorte central na proporção ⭐ ao derivar):"
+        + (ADJ.mode === "fill"
+           ? " ⚠️ o fundo borrado vira parte da imagem — ao derivar, o recorte corta dentro dele." : "");
   host.appendChild(label);
   const src = $("adjCanvas");
   // Bitmap na densidade real da tela (senão fica borrado em telas HiDPI) e
@@ -1595,8 +1758,12 @@ function updateAdjMulti(){
       const off = ADJ.offs[rk(gr.ratio)] || { ox: 0.5, oy: 0.5 };
       drawCover(ctx, ADJ.img, ADJ.img.naturalWidth, ADJ.img.naturalHeight,
                 cv.width, cv.height, off.ox, off.oy, ADJ.rot, off.z || 1);
+    } else if (fillHint){
+      // preencher é hint: cada canal preenche a ORIGINAL na própria proporção
+      drawFill(ctx, ADJ.img, ADJ.img.naturalWidth, ADJ.img.naturalHeight,
+               cv.width, cv.height, ADJ.rot);
     } else {
-      // preencher/esticar viram o arquivo — o derivar recorta o RESULTADO
+      // esticar/"sobre o recorte" viram o arquivo — o derivar recorta o RESULTADO
       drawCover(ctx, src, src.width, src.height, cv.width, cv.height, 0.5, 0.5, 0);
     }
     cv.style.borderRadius = "4px";
@@ -1615,8 +1782,9 @@ function updateAdjMulti(){
 // Salva o enquadramento da imagem atual como HINT (nada de arquivo novo):
 // o recorte acontece só ao publicar/derivar — sempre dá pra corrigir depois.
 function saveCropHint(){
-  ADJ.offs[rk(ADJ.ratio)] = curOff();
-  const h = { offs: JSON.parse(JSON.stringify(ADJ.offs)), rot: ADJ.rot };
+  if (ADJ.mode === "crop") ADJ.offs[rk(ADJ.ratio)] = curOff();
+  const h = { offs: JSON.parse(JSON.stringify(ADJ.offs)), rot: ADJ.rot,
+              mode: ADJ.mode === "fill" ? "fill" : "crop" };
   // Aba de canal: guarda também a proporção escolhida no chip (a universal
   // não — lá cada canal corta na própria ⭐ ao derivar).
   if (ADJ.ch !== "universal") h.ratio = ADJ.ratio;
@@ -1629,12 +1797,12 @@ function saveCropHint(){
 function applyAdj(){
   const list = chFileList(ADJ.ch);
   const old = list[ADJ.i];
-  if (ADJ.mode === "crop"){
+  if (ADJ.mode === "crop" || (ADJ.mode === "fill" && !ADJ.useCrop)){
     saveCropHint();
     const res = $(ADJ.ch === "instagram" ? "result" : `f-${ADJ.ch}-result`);
     if (res){
       res.className = "result ok";
-      res.textContent = `✂️ Enquadramento da imagem ${ADJ.i + 1} salvo — o recorte é `
+      res.textContent = `${ADJ.mode === "crop" ? "✂️ Recorte" : "🖼️ Preenchimento"} da imagem ${ADJ.i + 1} salvo — é `
         + (ADJ.ch === "universal" ? "aplicado ao derivar (e segue editável em cada aba)."
                                   : "aplicado ao publicar (reabra pra corrigir quando quiser).");
     }
@@ -1642,7 +1810,7 @@ function applyAdj(){
     else closeAdjuster();
     return;
   }
-  // Preencher/Esticar mudam os pixels de verdade: geram arquivo e zeram o hint.
+  // Esticar / "sobre o recorte" mudam os pixels de verdade: arquivo novo, hint zerado.
   $("adjCanvas").toBlob(blob => {
     if (!blob) return;
     const name = (old.name || "img").replace(/\.[^.]+$/, "") + "-ajustada.jpg";
@@ -1690,17 +1858,18 @@ let adjDrag = null;
       ADJ.cropRatio = ADJ.ratio;
       loadOff(ADJ.offs[rk(ADJ.ratio)]);
     }
+    if (ADJ.mode !== "stretch") ADJ.dirty = true;
     syncModeBtns(); drawAdj();
   }));
   $("adjRot").addEventListener("input", () => {
     ADJ.rot = +$("adjRot").value;
     $("adjRotVal").textContent = ADJ.rot + "°";
-    if (ADJ.mode === "crop") ADJ.dirty = true;
+    if (ADJ.mode !== "stretch") ADJ.dirty = true;
     drawAdj();
   });
   $("adjRotReset").addEventListener("click", () => {
     ADJ.rot = 0; $("adjRot").value = 0; $("adjRotVal").textContent = "0°";
-    if (ADJ.mode === "crop") ADJ.dirty = true;
+    if (ADJ.mode !== "stretch") ADJ.dirty = true;
     drawAdj();
   });
   $("adjZoom").addEventListener("input", () => {
@@ -1715,11 +1884,12 @@ let adjDrag = null;
     drawAdj();
   });
   $("adjUseCrop").addEventListener("change", () => {
-    ADJ.useCrop = $("adjUseCrop").checked; drawAdj();
+    ADJ.useCrop = $("adjUseCrop").checked; syncModeBtns(); drawAdj();
   });
-  // navegar/fechar não perde o enquadramento: no Cortar, arrasto/zoom/rotação
+  // navegar/fechar não perde o enquadramento: no Cortar/Preencher, arrasto/zoom/rotação
   // pendentes são salvos sozinhos (é hint, não arquivo — sempre reeditável)
-  const keepCrop = () => { if (ADJ.mode === "crop" && ADJ.dirty) saveCropHint(); };
+  const keepCrop = () => {
+    if (ADJ.dirty && (ADJ.mode === "crop" || (ADJ.mode === "fill" && !ADJ.useCrop))) saveCropHint(); };
   $("adjPrev").addEventListener("click", () => {
     keepCrop(); if (ADJ.i > 0){ ADJ.i--; loadAdjImage(); } });
   $("adjNext").addEventListener("click", () => {
@@ -1857,13 +2027,17 @@ async function sendPublish(confirm){
       const ig = j.instagram || {};
       let msg = ig.dry_run ? "✅ DRY-RUN (não postou no Instagram). " :
                 ig.id ? `✅ Publicado! ${ig.permalink}\n` : "✅ Rascunho salvo.\n";
+      if (j.warning) msg = "⚠️ " + j.warning + "\n" + msg;
       const v = j.validation || {};
       if(v.ran) msg += v.conforms ? "SHACL: conforme ✔" : "SHACL VIOLAÇÕES:\n- " + v.violations.join("\n- ");
       res.className = "result " + ((v.ran && !v.conforms) ? "err" : "ok");
       res.textContent = msg;
+      btn.disabled = false;
+      return true;
     }
   } catch(err){ res.className="result err"; res.textContent="Falha de rede: " + err; }
   btn.disabled = false;
+  return false;
 }
 
 $("go").addEventListener("click", () => {

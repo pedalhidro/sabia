@@ -6,6 +6,7 @@ dataset TTL.
 from __future__ import annotations
 
 import io
+import mimetypes
 from pathlib import Path
 from typing import Optional
 
@@ -40,6 +41,30 @@ def _gcs_save(data: bytes, filename: str, content_type: str) -> str:
     # Bucket should be configured for public reads (uniform access + allUsers
     # objectViewer), which is the recommended Cloud setup. This is the public URL.
     return f"https://storage.googleapis.com/{Config.GCS_BUCKET}/posts/{filename}"
+
+
+def read_image(url: str) -> Optional[tuple]:
+    """Lê de volta uma imagem salva por save_image → (bytes, mime) ou None.
+    Serve o "carregar" da aba universal: o navegador busca pela própria app
+    (mesma origem), sem depender de CORS no bucket."""
+    name = url.rsplit("/", 1)[-1]
+    if not name or name in (".", ".."):
+        return None
+    gcs_prefix = f"https://storage.googleapis.com/{Config.GCS_BUCKET}/posts/"
+    if Config.using_gcs() and url.startswith(gcs_prefix):
+        from google.cloud import storage
+
+        blob = storage.Client().bucket(Config.GCS_BUCKET).blob(f"posts/{name}")
+        if not blob.exists():
+            return None
+        blob.reload()
+        return blob.download_as_bytes(), blob.content_type or "image/jpeg"
+    if "/uploads/" in url:
+        p = Config.LOCAL_UPLOAD_DIR / name
+        if p.is_file():
+            mime = mimetypes.guess_type(name)[0] or "image/jpeg"
+            return p.read_bytes(), mime
+    return None
 
 
 # ── Dataset TTL ──────────────────────────────────────────────────────────────

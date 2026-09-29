@@ -397,6 +397,9 @@ def universal_posts(g: rdflib.Graph) -> List[dict]:
             "text": (blocks[0] if blocks else "")[:200],
             "blocks": len(blocks),
             "images": len(members),
+            # conteúdo completo, pro "carregar" da aba universal reabrir a matriz
+            "block_texts": blocks,
+            "image_alts": [str(g.value(m, SCHEMA.description) or "") for m in members],
             "date": str(g.value(s, DCTERMS.date) or ""),
             "permalink": "",
             "is_posted": True,   # a matriz não é postada em si — sem pílula de rascunho
@@ -408,6 +411,19 @@ def universal_posts(g: rdflib.Graph) -> List[dict]:
         })
     out.sort(key=lambda p: p["date"], reverse=True)
     return out
+
+
+def universal_image_url(g: rdflib.Graph, iri: str, i: int) -> Optional[str]:
+    """URL da i-ésima imagem (0-based) de um ph:UniversalPost, ou None."""
+    s = URIRef(iri)
+    if (s, RDF.type, PH.UniversalPost) not in g:
+        return None
+    ihead = g.value(s, SCHEMA.image)
+    members = list(Collection(g, ihead)) if ihead is not None else []
+    if not 0 <= i < len(members):
+        return None
+    url = g.value(members[i], SCHEMA.contentUrl)
+    return str(url) if url else None
 
 
 def channel_announcements(g: rdflib.Graph, channel: str) -> List[dict]:
