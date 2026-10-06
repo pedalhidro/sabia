@@ -631,6 +631,95 @@ async function loadUniversal(a){
     + "sem mudanças, derivar/postar reusa a mesma matriz.";
 }
 
+// ── Pré-preenchimento vindo do amora (🎨 Arte de anúncio) ──
+// O passo "Publicar" do amora abre esta página com #amora=<base64url(JSON)>:
+// título, legenda, imagens (URL pública da arte, no bucket do Censo do amora)
+// e o evento da Agenda. Pelo FRAGMENTO, nunca vai pro servidor nem pros logs
+// da Cloudflare. Nada é publicado aqui: só preenche a aba universal e a
+// Agenda pra pessoa revisar e publicar. Imagem só de hosts conhecidos.
+const AMORA_IMAGE_HOSTS = [/^https:\/\/storage\.googleapis\.com\/phidro-state\//,
+                           /^https:\/\/amora\.pedalhidrografi\.co\//];
+function readAmoraPrefill(){
+  const m = /[#&]amora=([A-Za-z0-9_-]+)/.exec(location.hash);
+  if (!m) return null;
+  try {
+    const b64 = m[1].replace(/-/g, "+").replace(/_/g, "/");
+    const bin = atob(b64 + "=".repeat((4 - b64.length % 4) % 4));
+    const p = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+    return p && p.v === 1 && p.source === "amora" ? p : null;
+  } catch { return null; }
+}
+// Texto corrido → blocos da escada: cada bloco corta no último parágrafo /
+// linha / fim de frase / espaço que caiba no orçamento dele — assim o Mastodon
+// (só o bloco 1) não leva uma frase pela metade. Concatenados, os blocos
+// devolvem o texto original exato.
+function splitLadder(text, ladder){
+  const out = [];
+  let rest = text || "";
+  for (const t of ladder){
+    if (!rest) break;
+    if (rest.length <= t.budget){ out.push(rest); rest = ""; break; }
+    const win = rest.slice(0, t.budget), min = t.budget * 0.5;
+    let cut = win.lastIndexOf("\n\n");
+    if (cut < min) cut = win.lastIndexOf("\n");
+    if (cut < min){ const ms = [...win.matchAll(/[.!?…]\s/g)]; cut = ms.length ? ms[ms.length - 1].index + 1 : -1; }
+    if (cut < min) cut = win.lastIndexOf(" ");
+    if (cut <= 0) cut = t.budget;
+    while (cut < win.length && /\s/.test(win[cut])) cut++;
+    out.push(rest.slice(0, cut));
+    rest = rest.slice(cut);
+  }
+  if (rest && out.length) out[out.length - 1] += rest;
+  return out;
+}
+async function importFromAmora(){
+  const p = readAmoraPrefill();
+  if (!p) return;
+  history.replaceState(null, "", location.pathname + location.search);   // recarregar não reimporta
+  setTab("universal");
+  const res = $("f-universal-result");
+  res.className = "result"; res.textContent = "Recebendo o anúncio do amora…";
+  const imgs = [], alts = [];
+  let imgErr = "";
+  for (const [i, im] of (p.images || []).slice(0, 20).entries()){
+    if (!im || !AMORA_IMAGE_HOSTS.some(re => re.test(String(im.url || "")))) { imgErr = "endereço de imagem desconhecido"; continue; }
+    try {
+      const r = await fetch(im.url, { mode: "cors" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const b = await r.blob();
+      const ext = (b.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
+      imgs.push(new File([b], `amora-${i + 1}.${ext}`, { type: b.type || "image/jpeg" }));
+      alts.push(String(im.alt || ""));
+    } catch (e){ imgErr = e.message; }
+  }
+  $("f-universal-title").value = String(p.title || "").slice(0, 255);
+  const blocks = splitLadder(String(p.text || ""), uniLadder());
+  uniLadder().forEach((_, i) => $(`f-universal-b${i + 1}`).value = blocks[i] || "");
+  UNI.urls.forEach(u => u && URL.revokeObjectURL(u));
+  UNI.files.splice(0, UNI.files.length, ...imgs);
+  UNI.urls.splice(0, UNI.urls.length, ...imgs.map(f => URL.createObjectURL(f)));
+  UNI.alts.splice(0, UNI.alts.length, ...alts);
+  UNI.cropHints.splice(0, UNI.cropHints.length, ...imgs.map(() => null));
+  UNI_SAVED = null;
+  imgRefresh("universal");
+  const ev = p.event || {};
+  if ($("f-gcal-title")){
+    $("f-gcal-title").value = String(ev.title || p.title || "").slice(0, 255);
+    $("f-gcal-text").value = String(ev.text || p.text || "").slice(0, 2150);
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(ev.start || "")) $("f-gcal-start").value = ev.start;
+    $("f-gcal-place").value = String(ev.place || "");
+    chUpdate("gcal");
+  }
+  if (imgErr){
+    res.className = "result err";
+    res.textContent = `Texto do amora carregado, mas a arte não veio (${imgErr}) — baixe-a no amora e anexe aqui.`;
+  } else {
+    res.className = "result ok";
+    res.textContent = `📥 Anúncio do amora carregado${imgs.length ? " com a arte" : ""}`
+      + `${ev.start ? " (o evento está na aba Agenda)" : ""}. Confira e use 🌐 ou 📣 pra publicar.`;
+  }
+}
+
 async function deriveUniversal(){
   const res = $("f-universal-result"), btn = $("f-universal-go");
   const blocks = uniBlocks();
@@ -2123,9 +2212,10 @@ fetch("/api/config").then(r=>r.json()).then(c=>{
   ORDER.filter(k => k !== "universal" && k !== "instagram").forEach(buildPane);
   buildTabs();
   setTab("universal");
+  importFromAmora();
 }).catch(()=>{ buildUniversalPane();
   ORDER.filter(k => k !== "universal" && k !== "instagram").forEach(buildPane);
-  buildTabs(); setTab("universal"); });
+  buildTabs(); setTab("universal"); importFromAmora(); });
 
 render();
 loadGrid();

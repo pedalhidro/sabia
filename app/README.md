@@ -48,6 +48,28 @@ apontando pra matriz. A escada é *derivada* da tabela de canais em
 estático) codifica os mesmos degraus — mudou limite de canal, a shape
 acompanha.
 
+## Vindo do amora (🎨 Arte de anúncio)
+
+O último passo da arte de anúncio do amora salva o passeio no Censo e abre
+esta página com o post pronto em `#amora=<base64url(JSON)>`:
+
+```json
+{"v": 1, "source": "amora", "title": "…", "text": "legenda",
+ "images": [{"url": "https://storage.googleapis.com/phidro-state/tour_assets/…", "alt": "…"}],
+ "event": {"title": "…", "start": "AAAA-MM-DDTHH:MM", "place": "ponto de encontro", "text": "…"},
+ "link": "https://amora.pedalhidrografi.co/passeio/<slug>"}
+```
+
+`importFromAmora` (composer.html) preenche a aba 🌐 — título, a legenda cortada
+na escada (`splitLadder`: corta no último parágrafo/linha/fim de frase que cabe
+em cada bloco; os blocos emendados devolvem o texto exato), a arte com o alt —
+e a aba 📅 Agenda (título, início, local, descrição). Vai pelo **fragmento**,
+então nunca chega no servidor nem nos logs; depois de ler, a página tira o
+fragmento da URL (recarregar não reimporta). **Nada é publicado**: a pessoa
+confere e usa 🌐/📣 como sempre. Imagem só de `storage.googleapis.com/phidro-state/`
+(o bucket do amora, CORS aberto) ou `amora.pedalhidrografi.co`. Mudou o formato
+→ mude o `openSabia` de `amora/web/lib/poster.js` junto.
+
 ## Ferramentas de composição
 
 O botão **📋 copiar** leva texto+imagens de uma aba pras outras (cortando nos
